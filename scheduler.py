@@ -1,3 +1,4 @@
+from operator import index
 import pandas as pd
 import numpy as np
 from services import get_engine
@@ -175,103 +176,95 @@ def get_schedule(order):
     Job's capacity utilization is in roubles. Job takes capacity up to its capacity utilization.
     The last hour of a job may be fractional. Nevertheless the job's capacity utilization is rounded up to whole hour.
     
-    Individual specifications are sorted by spec row number and item production row is moved to the end.
+    Custom specifications are sorted by spec row number and item production row is moved to the end.
     The jobs withen the specifications scheduled sequentially finish-to-start.
     Th subsequent job starts the next day after the previous one finishes, not the next hour.
     '''
-    n_modelers = 3
-    n_molders = 3
-    n_pullers = 2
+    n_modelers = 2
+    n_molders = 2
     n_casters = 2
-    mold_pwr = 2    # DEV then get it from the db
-    date0 = dt.date(2022, 9, 30)
+    n_pullers = 2
+    rate = 75_000 / 21 / 8
+    capacity = {
+        'modelers': n_modelers * rate,
+        'molders': n_molders * rate,
+        'casters': n_casters * rate,
+        'pullers': n_pullers * rate
+    }
     
-    idx_col0 = (['Модели'] * n_modelers + ['Формы'] * n_molders + 
-               ['Протяжка'] * n_pullers + ['Отливка'] * n_casters)
-    idx_col1 = list(range(n_modelers))
-    idx_col1.extend(range(n_molders))
-    idx_col1.extend(range(n_pullers))
-    idx_col1.extend(range(n_casters))
+    schedule = pd.DataFrame(index=order.index)
     
-    idx_col = [idx_col0, idx_col1]
-    idx_col = list(zip(*idx_col))
-    idx_col = pd.MultiIndex.from_tuples(idx_col, names=['shop', 'resource'])
-    
-    # idx_row = pd.MultiIndex.from_product([range(10), range(8)], names=['day', 'hr'])
-
-    schedule = pd.DataFrame(
-        75_000 / 21 /8,
-        # index=idx_row,
-        index=range(200),
-        columns=idx_col
-    )
-    
-    log = pd.DataFrame(columns=[
-        'rowNo',        # order row number
-        'time_slot',    # (day, hr) tuple
-        'shop',
-        'resource',
-        'consumption'   # in roubles
-    ])
-    
-    def find_start(shop: str):
-        for start in schedule.index:
-            for resource in schedule[shop].columns:
-                capacity = schedule.loc[start, (shop, resource)]
-                if capacity > 0: break
-                if capacity < 0:
-                    print("Error", shop, str(resource), start)
-            else:
-                continue
-            break        
+    def rearrange_customs():
+        custom_specs = order[
+            (order.spec.notnull()) & 
+            (order.shop.isin(["Модели", "Формы"]))
+        ].spec.unique()
         
-        return start, resource
+        # TODO: add check for specs shall have consequantial row numbers
+        
+        order['index2'] = order.index
+        
+        for spec in custom_specs:
+            rows = order[order.spec==spec].index2
+            
+            for row in rows:
+                if row == min(rows):
+                    if order.shop.values[row] not in ["Протяжка", "Отливка"]:
+                        print(
+                            "Custom spec error: production is not the 1st "
+                            "line in the spec:", 
+                            spec
+                        )
+                    order.at[row, 'index2'] = max(rows)
+                else:
+                    order.at[row, 'index2'] -= 1
+                    
+        order.set_index('index2', drop=True, inplace=True)
+        order.sort_index(inplace=True)
+                    
+        return order
+        
+    order = rearrange_customs()
     
     for i, job in order.iterrows():
-        if job.spec:
-            pass
-        else:
-            if job.shop=='Отливка':
-                pay_left = job.pay
-                # find 1st available resource
-                start, resource = find_start('Отливка')
-                        
-                # schedule the job
-                for d in range(start, schedule.shape[0] + 1):
-                    '''
-                    6 combinations possible:
-                    - capacity > pay_left > pwr
-                    - capacity > pwr > pay_left
-                    - pay_left > pwr > capacity
-                    - pay_left > capacity > pwr
-                    - pwr > pay_left > capacity
-                    - pwr > capacity > pay_left
-                    '''
-                    capacity = schedule.loc[d, ('Отливка', resource)]
-                    step = min(pay_left, job.pwr, capacity)
-                    schedule.at[d, ('Отливка', resource)] = capacity - step
-                    pay_left -= step
-                    log.loc[log.shape[0]] = [
-                        job.rowNo, d, 'Отливка', resource,step
-                        ]
-                    
-                    if pay_left <= 0: break
-                    
-                    # TODO: add extra rows to the schedule if run out of rows
-                    
+        d = 0
+        if job.spec: 
+            spec = order[order.spec==job.spec]
+        
+        elif job.shop in ['Отливка', 'Протяжка']: 
+            job_allocated = 0
+            pwr = rate if job.shop == 'Протяжка' else job.pwr
+            shop = job.shop
+            while job_allocated < job.pay:
+                if d not in schedule.columns:
+                    schedule[d] = 0.
                 
-                print(job.rowNo)
-            
-            elif job.shop=='Протяжка':
-                pay_left = job.pay
+                day_allocated = schedule.loc[order.shop==shop, d].sum()
+                available_capacity = capacity['casters'] - day_allocated
+                if available_capacity > 0:
+                    to_allocate = min(
+                        available_capacity, pwr, job.pay - job_allocated)
+                    schedule.at[i, d] = to_allocate
+                    job_allocated += to_allocate
+                    day_allocated += to_allocate
                 
-    pass
+                d += 1        
+        
+        # elif job.shop == 'Протяжка':
+        #     job_allocated = 0
+        #     pwr = rate
+        #     while job_allocated < job.pay:
+                
+    
+    return schedule
 
 
 def schedule():
-    order = read_order('2239%')
+    order = read_order('22399/1/%')
+    order.to_excel('order.xlsx')
     calendar = get_calendar()
-    get_schedule(order)
+    schedule = get_schedule(order)
+    schedule.to_excel('schedule.xlsx')
     print(f'{order.shape=}')
     print(order.iloc[:5, :6])
     
