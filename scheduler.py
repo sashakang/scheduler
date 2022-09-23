@@ -186,19 +186,20 @@ def get_schedule(order):
     n_pullers = 2
     rate = 75_000 / 21 / 8
     capacity = {
-        'modelers': n_modelers * rate,
-        'molders': n_molders * rate,
-        'casters': n_casters * rate,
-        'pullers': n_pullers * rate
+        'Модели': n_modelers * rate,
+        'Формы': n_molders * rate,
+        'Отливка': n_casters * rate,
+        'Протяжка': n_pullers * rate
     }
     
     schedule = pd.DataFrame(index=order.index)
     
+    custom_specs = order[
+        (order.spec.notnull()) & 
+        (order.shop.isin(["Модели", "Формы"]))
+    ].spec.unique()
+    
     def rearrange_customs():
-        custom_specs = order[
-            (order.spec.notnull()) & 
-            (order.shop.isin(["Модели", "Формы"]))
-        ].spec.unique()
         
         # TODO: add check for specs shall have consequantial row numbers
         
@@ -226,45 +227,58 @@ def get_schedule(order):
         
     order = rearrange_customs()
     
+    order['scheduled'] = False
+    
     for i, job in order.iterrows():
-        d = 0
-        if job.spec: 
-            spec = order[order.spec==job.spec]
+        if job.scheduled: continue
         
-        elif job.shop in ['Отливка', 'Протяжка']: 
-            job_allocated = 0
-            pwr = rate if job.shop == 'Протяжка' else job.pwr
-            shop = job.shop
-            while job_allocated < job.pay:
-                if d not in schedule.columns:
-                    schedule[d] = 0.
-                
-                day_allocated = schedule.loc[order.shop==shop, d].sum()
-                available_capacity = capacity['casters'] - day_allocated
-                if available_capacity > 0:
-                    to_allocate = min(
-                        available_capacity, pwr, job.pay - job_allocated)
-                    schedule.at[i, d] = to_allocate
-                    job_allocated += to_allocate
-                    day_allocated += to_allocate
-                
-                d += 1        
+        hr = 0
+        if job.spec in custom_specs: 
+            scheduled_days = schedule[order.spec==job.spec].sum()
+            hr = scheduled_days[scheduled_days > 0].index.max()
+            hr = 0 if pd.isnull(hr) else hr + 1
+            # d = math.ceil(d / 8) * 8  # TODO: should not skip remaining hrs of a new day
         
-        # elif job.shop == 'Протяжка':
-        #     job_allocated = 0
-        #     pwr = rate
-        #     while job_allocated < job.pay:
-                
+        job_allocated = 0
+        pwr = job.pwr if job.shop == 'Отливка' else rate
+        shop = job.shop
+        while job_allocated < job.pay:
+            if hr not in schedule.columns:
+                schedule[hr] = 0.
+            
+            hr_allocated = schedule.loc[order.shop==shop, hr].sum()
+            available_capacity = capacity[shop] - hr_allocated
+            if available_capacity > 0:
+                to_allocate = min(
+                    available_capacity, pwr, job.pay - job_allocated)
+                schedule.at[i, hr] = to_allocate
+                job_allocated += to_allocate
+                hr_allocated += to_allocate
+            
+            hr += 1       
+        
+        order.at[i, 'scheduled'] = True 
     
     return schedule
 
 
+def schedule2days(schedule):
+    schedule_days = pd.DataFrame(index=schedule.index)
+    for d in range(math.ceil(schedule.shape[1] / 8)):
+        right_boundary = min(d * 8 + 7, schedule.shape[1])
+        schedule_days[d] = schedule.loc[:, d * 8 : right_boundary].sum(axis=1)
+    
+    return schedule_days
+
+
 def schedule():
     order = read_order('22399/1/%')
-    order.to_excel('order.xlsx')
     calendar = get_calendar()
     schedule = get_schedule(order)
+    schedule_days = schedule2days(schedule)
+    order.to_excel('order.xlsx')
     schedule.to_excel('schedule.xlsx')
+    schedule_days.to_excel('schedule_days.xlsx')
     print(f'{order.shape=}')
     print(order.iloc[:5, :6])
     
