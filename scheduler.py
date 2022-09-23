@@ -152,19 +152,19 @@ def read_order(order_no):
     return order
 
 
-def get_calendar():
+def get_calendar(start_date: str ='20220901'):
     query = '''
     SELECT 
         CAST(DATEADD([YEAR], -2000, _Fld6647) AS date) Дата
-        --, CAST(_Fld6649RRef AS uniqueidentifier) AS ВидДня
-        , CASE
-            WHEN CAST(_Fld6649RRef AS uniqueidentifier) IN ('DE79BA8C-92F0-7714-4F63-B787C3B5C81F', '9031DDB1-C61A-DC1C-4A16-97C6C8B0A1BE') THEN 1
-            ELSE 0
-        END AS workDay
     FROM _InfoRg6645
-    WHERE _Fld6648 BETWEEN 2022 AND 2025   -- year
+    WHERE 
+        _Fld6648 BETWEEN 2022 AND 2025   -- year
+        -- workdays only:
+        AND CAST(_Fld6649RRef AS uniqueidentifier) IN ('DE79BA8C-92F0-7714-4F63-B787C3B5C81F', '9031DDB1-C61A-DC1C-4A16-97C6C8B0A1BE')
+        AND CAST(DATEADD([YEAR], -2000, _Fld6647) AS date) > '20220901'
     '''
     calendar = pd.read_sql(query, engine_unf)
+    calendar['date_str'] = calendar.Дата.apply(lambda d: d.strftime("%d.%m.%Y"))
     return calendar
 
 
@@ -237,7 +237,10 @@ def get_schedule(order):
             scheduled_days = schedule[order.spec==job.spec].sum()
             hr = scheduled_days[scheduled_days > 0].index.max()
             hr = 0 if pd.isnull(hr) else hr + 1
-            # d = math.ceil(d / 8) * 8  # TODO: should not skip remaining hrs of a new day
+            hr = math.ceil(hr / 8) * 8  # TODO: should not skip remaining hrs of a new day
+            for ii in range(hr):
+                if ii not in schedule.columns:
+                    schedule[ii] = 0.
         
         job_allocated = 0
         pwr = job.pwr if job.shop == 'Отливка' else rate
@@ -263,17 +266,21 @@ def get_schedule(order):
 
 
 def schedule2days(schedule):
+    # TODO: Won't be needed. For export to Excel only. Delete.
     schedule_days = pd.DataFrame(index=schedule.index)
     for d in range(math.ceil(schedule.shape[1] / 8)):
         right_boundary = min(d * 8 + 7, schedule.shape[1])
         schedule_days[d] = schedule.loc[:, d * 8 : right_boundary].sum(axis=1)
+    
+    calendar = get_calendar()
+    schedule_days.set_axis(calendar[:schedule_days.shape[1]].date_str.values, 
+                           axis=1, inplace=True)
     
     return schedule_days
 
 
 def schedule():
     order = read_order('22399/1/%')
-    calendar = get_calendar()
     schedule = get_schedule(order)
     schedule_days = schedule2days(schedule)
     order.to_excel('order.xlsx')
