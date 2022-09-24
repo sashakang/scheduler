@@ -1,9 +1,12 @@
 from operator import index
+from sqlite3 import Timestamp
 import pandas as pd
 import numpy as np
 from services import get_engine
 import math
-import datetime as dt
+from datetime import datetime as dt
+from dateutil import tz
+import sqlalchemy 
 
 engine_unf = get_engine(fname='../credentials/.prod_unf')
 engine_analytics = get_engine(fname='../credentials/.server_analytics')
@@ -192,6 +195,13 @@ def get_schedule(order):
         'Протяжка': n_pullers * rate
     }
     
+    log = pd.DataFrame(columns=[
+        'order_no',
+        'rowNo',
+        'hr',
+        'allocated'
+    ])
+    
     schedule = pd.DataFrame(index=order.index)
     
     custom_specs = order[
@@ -255,6 +265,7 @@ def get_schedule(order):
                 to_allocate = min(
                     available_capacity, pwr, job.pay - job_allocated)
                 schedule.at[i, hr] = to_allocate
+                log.loc[len(log)] = [job.orderNo, job.rowNo, hr, to_allocate]
                 job_allocated += to_allocate
                 hr_allocated += to_allocate
             
@@ -262,7 +273,18 @@ def get_schedule(order):
         
         order.at[i, 'scheduled'] = True 
     
-    return schedule
+    
+    log['timestamp'] = get_timestamp()  
+    
+    return schedule, log
+
+
+def get_timestamp():
+    from_zone = tz.tzutc()
+    to_zone = tz.gettz("Europe/Moscow")
+    timestamp = dt.utcnow().replace(tzinfo = from_zone).astimezone(to_zone)
+    timestamp = timestamp.strftime('%d.%m.%y %H:%M:%S')
+    return timestamp
 
 
 def schedule2days(schedule):
@@ -279,15 +301,46 @@ def schedule2days(schedule):
     return schedule_days
 
 
-def schedule():
-    order = read_order('22399/1/%')
-    schedule = get_schedule(order)
+def schedule(order_no='22399/1/%'):
+    order = read_order(order_no)
+    schedule, log = get_schedule(order)
+    schedule.to_excel('schedule.xlsx')
     schedule_days = schedule2days(schedule)
     order.to_excel('order.xlsx')
-    schedule.to_excel('schedule.xlsx')
     schedule_days.to_excel('schedule_days.xlsx')
+    
+    log.to_sql(
+        name='order_prod_sched',
+        con=engine_analytics,
+        if_exists='replace',
+        index=False,
+        dtype={
+            'timestamp': sqlalchemy.DateTime,
+            'orderNo': sqlalchemy.Text,
+            'rowNo': sqlalchemy.Integer,
+            'hr': sqlalchemy.Integer,
+            'pay': sqlalchemy.Float
+        }
+    )    
+    
+    schedule['timestamp'] = get_timestamp()
+    sched_matrix = order.merge(
+        schedule,
+        how='left',
+        left_index=True,
+        right_index=True
+    )
+    
+    sched_matrix.to_sql(
+        name='sched_matrix',
+        con=engine_analytics,
+        if_exists='replace',
+        index=False
+    )
+    
     print(f'{order.shape=}')
     print(order.iloc[:5, :6])
+    print(log.head())
     
     
     
