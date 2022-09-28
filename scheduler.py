@@ -1,15 +1,29 @@
 from operator import index
-from sqlite3 import Timestamp
+# from sqlite3 import Timestamp
 import pandas as pd
-import numpy as np
+# import numpy as np
 from services import get_engine
 import math
 from datetime import datetime as dt
-from dateutil import tz
+# from dateutil import tz
 import sqlalchemy 
 
 engine_unf = get_engine(fname='../credentials/.prod_unf')
 engine_analytics = get_engine(fname='../credentials/.server_analytics')
+
+import warnings
+warnings.filterwarnings("ignore")
+
+
+# def get_timestamp():
+#     from_zone = tz.tzutc()
+#     to_zone = tz.gettz("Europe/Moscow")
+#     timestamp = dt.utcnow().replace(tzinfo = from_zone).astimezone(to_zone)
+#     timestamp = timestamp.strftime('%d.%m.%y %H:%M:%S')
+#     return timestamp
+
+
+# timestamp = get_timestamp()  
 
 
 def read_order(order_no):
@@ -156,7 +170,7 @@ def read_order(order_no):
 
 
 def get_calendar(start_date: str ='20220901'):
-    query = '''
+    query = f'''
     SELECT 
         CAST(DATEADD([YEAR], -2000, _Fld6647) AS date) Дата
     FROM _InfoRg6645
@@ -164,14 +178,22 @@ def get_calendar(start_date: str ='20220901'):
         _Fld6648 BETWEEN 2022 AND 2025   -- year
         -- workdays only:
         AND CAST(_Fld6649RRef AS uniqueidentifier) IN ('DE79BA8C-92F0-7714-4F63-B787C3B5C81F', '9031DDB1-C61A-DC1C-4A16-97C6C8B0A1BE')
-        AND CAST(DATEADD([YEAR], -2000, _Fld6647) AS date) > '20220901'
+        AND CAST(DATEADD([YEAR], -2000, _Fld6647) AS date) > '{start_date}'
     '''
     calendar = pd.read_sql(query, engine_unf)
     calendar['date_str'] = calendar.Дата.apply(lambda d: d.strftime("%d.%m.%Y"))
     return calendar
 
 
-def get_schedule(order):
+def get_schedule(
+    order, 
+    timestamp,
+    night_shift,
+    n_modelers,
+    n_molders,
+    n_casters,
+    n_pullers  
+):
     '''
     Schedule by hour.
     All jobs rounded up to the whole hour.
@@ -183,10 +205,6 @@ def get_schedule(order):
     The jobs withen the specifications scheduled sequentially finish-to-start.
     Th subsequent job starts the next day after the previous one finishes, not the next hour.
     '''
-    n_modelers = 2
-    n_molders = 2
-    n_casters = 2
-    n_pullers = 2
     rate = 75_000 / 21 / 8
     capacity = {
         'Модели': n_modelers * rate,
@@ -240,6 +258,7 @@ def get_schedule(order):
     order['scheduled'] = False
     
     for i, job in order.iterrows():
+        print(f'{i=}')
         if job.scheduled: continue
         
         hr = 0
@@ -270,21 +289,14 @@ def get_schedule(order):
                 hr_allocated += to_allocate
             
             hr += 1       
+            if hr > 400: break
         
         order.at[i, 'scheduled'] = True 
     
     
-    log['timestamp'] = get_timestamp()  
+    log['timestamp'] = timestamp
     
     return schedule, log
-
-
-def get_timestamp():
-    from_zone = tz.tzutc()
-    to_zone = tz.gettz("Europe/Moscow")
-    timestamp = dt.utcnow().replace(tzinfo = from_zone).astimezone(to_zone)
-    timestamp = timestamp.strftime('%d.%m.%y %H:%M:%S')
-    return timestamp
 
 
 def schedule2days(schedule):
@@ -296,18 +308,76 @@ def schedule2days(schedule):
     
     calendar = get_calendar()
     schedule_days.set_axis(calendar[:schedule_days.shape[1]].date_str.values, 
-                           axis=1, inplace=True)
+                           axis=1, copy=False)
     
     return schedule_days
 
 
-def schedule(order_no='22399/1/%'):
+def log2days(log, start):
+    log['day'] = (log.hr / 8).astype(int)
+    log_days = log.groupby(['order_no', 'timestamp', 'rowNo', 'day']).agg(sum)[['allocated']]
+    log_days.reset_index(drop=False, inplace=True)
+    
+    
+    calendar = get_calendar(start)
+    
+    if start:
+        dates_dict = dict(zip(range(log_days.day.max()), calendar.Дата))
+        log_days['date'] = log_days.day.map(dates_dict)
+    else:
+        log_days['date'] = None
+    
+    return log_days
+
+
+def schedule(
+        order_no: str, 
+        start: str, 
+        timestamp: str,
+        night_shift,
+        modelers,
+        molders,
+        casters,
+        pullers        
+    ):
+    
+    if start:
+        start = dt.strptime(start, '%d.%m.%Y')
+        start = start.strftime('%Y%m%d')
+    
+    if timestamp:
+        timestamp = dt.strptime(timestamp, '%d.%m.%Y %H:%M:%S')
+    
+    print('***read_order***')
     order = read_order(order_no)
-    schedule, log = get_schedule(order)
-    schedule.to_excel('schedule.xlsx')
+    
+    print('***get_schedule***')
+    schedule, log = get_schedule(
+        order, 
+        timestamp,
+        night_shift,
+        modelers,
+        molders,
+        casters,
+        pullers          
+    )
+    
+    log_days = log2days(log, start)
+    log_days.to_sql(
+        name='order_daily_log',
+        con=engine_analytics,
+        if_exists='append',
+        index=False,
+        dtype={
+            'rowNo': sqlalchemy.Integer,
+            'timestamp': sqlalchemy.DateTime,
+            'orderNo': sqlalchemy.Text,
+            'day': sqlalchemy.Integer
+        }
+    )
+    
+    print('***outputting***')
     schedule_days = schedule2days(schedule)
-    order.to_excel('order.xlsx')
-    schedule_days.to_excel('schedule_days.xlsx')
     
     log.to_sql(
         name='order_prod_sched',
@@ -323,9 +393,9 @@ def schedule(order_no='22399/1/%'):
         }
     )    
     
-    schedule['timestamp'] = get_timestamp()
+    order['timestamp'] = timestamp
     sched_matrix = order.merge(
-        schedule,
+        schedule_days,
         how='left',
         left_index=True,
         right_index=True
@@ -340,6 +410,7 @@ def schedule(order_no='22399/1/%'):
     
     print(f'{order.shape=}')
     print(order.iloc[:5, :6])
+    print(f'{schedule.shape=}')
     print(log.head())
     
     
