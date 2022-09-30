@@ -8,7 +8,6 @@ def get_engine(
 ) -> engine.base.Engine:
     with open(fname, 'r') as f:
         for line in f:
-            # print(f'{line=}')
             if line[0] == '#': continue
 
             vals = [s.strip() for s in line.split(':')]
@@ -29,15 +28,12 @@ def get_engine(
     if not (server and login and password):
         raise ValueError("Server access credentials are not valid")
 
-    # db_str = f'/{db}' if db else ''
-    
-    # print(f'{password=}')
-    
     engine = create_engine(
         f'mssql+pyodbc://{login}:{password}@{server}/{db}'
         f'?driver=ODBC Driver 17 for SQL Server'
         )
 
+    print(f'Connection to {login}@{db} created.')
     return engine
 
 

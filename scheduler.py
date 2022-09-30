@@ -1,11 +1,8 @@
 from operator import index
-# from sqlite3 import Timestamp
 import pandas as pd
-# import numpy as np
 from services import get_engine
 import math
 from datetime import datetime as dt
-# from dateutil import tz
 import sqlalchemy 
 
 engine_unf = get_engine(fname='../credentials/.prod_unf')
@@ -15,18 +12,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-# def get_timestamp():
-#     from_zone = tz.tzutc()
-#     to_zone = tz.gettz("Europe/Moscow")
-#     timestamp = dt.utcnow().replace(tzinfo = from_zone).astimezone(to_zone)
-#     timestamp = timestamp.strftime('%d.%m.%y %H:%M:%S')
-#     return timestamp
-
-
-# timestamp = get_timestamp()  
-
-
-def read_order(order_no):
+def read_order(order_no, night_shift):
 
     query_order = f'''
     -- order scheduling data
@@ -85,6 +71,8 @@ def read_order(order_no):
         , components_list._Fld16192 AS количество
         , components_list._Fld16163 AS радиус
         , CAST(components_list._Fld16164 AS int) AS лекало
+        , components_list._Fld36357 AS n_casts
+        , components_list._Fld36358 / 1000 AS cast_len
         , IIF(component_tech._Description IN ('Модельные работы', 'Формовочные работы'), components_list._Fld36159, NULL) AS тариф
         , IIF(component_tech._Description IN ('Модельные работы', 'Формовочные работы'), components_list._Fld36160, NULL) AS цена
         FROM _Reference16144 AS specs
@@ -110,6 +98,8 @@ def read_order(order_no):
         , items._Description AS item
         , units._Description AS unit
         , tables._Fld3644 AS qty
+        , specs.n_casts
+        , specs.cast_len
         , CASE
         WHEN rates.Цена IS NULL THEN specs.тариф
         ELSE rates.Цена
@@ -143,8 +133,6 @@ def read_order(order_no):
 
     order = pd.read_sql(query_order, engine_unf)
 
-    hr_rate = math.ceil(75_000 / 21 / 8)
-    # order['hrs'] = (order.pay / hr_rate).apply(math.ceil)
     shops = {
         "Протяжка": "Протяжка",
         "Отливка": "Отливка",
@@ -163,10 +151,155 @@ def read_order(order_no):
     order = order[order.shop!='Прочие']
     
     # TODO: use power data, not const(2)
-    order['pwr'] = order.apply(lambda r: r.rate * 2 if r.shop=='Отливка' else None
-                               , axis=1)
+
+    query_ind_specs = f'''
+        -- complex_specs.sql
+        SELECT 
+        specs._Description AS Спецификация
+        , CAST(specs.[_Code] AS int) AS specId
+        , CAST(parent._Fld1527 AS int) AS артикулРодитель
+        , parent._Description AS Родитель
+        , parent_tech._Description AS родительТехнология
+        , parent_cat._Description AS родительКатегория
+        , units._Description AS parentUnit
+        , components_list._LineNo16156 AS specLineNo
+        , CAST(component._Fld1527 AS int) AS артикулКомпонент
+        , component._Description AS Компонент
+        , component_tech._Description AS компонентТехнология
+        , components_list._Fld16192 AS количество
+    --	, components_list._Fld35576 AS количествоДляСайта
+        , components_list._Fld16163 AS радиус
+        , CAST(components_list._Fld16164 AS int) AS лекало
+        , components_list._Fld36357 AS n_casts
+        , components_list._Fld36358 / 1000 AS cast_len	
+        , IIF(component_tech._Description IN ('Модельные работы', 'Формовочные работы'), components_list._Fld36159, NULL) AS тариф
+        , IIF(component_tech._Description IN ('Модельные работы', 'Формовочные работы'), components_list._Fld36160, NULL) AS цена
+    FROM 
+        _Reference16144 AS specs
+        LEFT JOIN _Reference76 AS parent ON specs._Fld16369RRef = parent._IDRRef
+        LEFT JOIN _Reference79 AS parent_tech ON parent._Fld1533RRef = parent_tech._IDRRef
+        LEFT JOIN _Reference76 AS parent_cat ON parent._ParentIDRRef = parent_cat._IDRRef
+        LEFT JOIN _Reference16144_VT16155 AS components_list ON components_list._Reference16144_IDRRef  = specs._IDRRef
+        LEFT JOIN _Reference76 AS component ON components_list._Fld16157_RRRef = component._IDRRef
+        LEFT JOIN _Reference79 AS component_tech ON component._Fld1533RRef = component_tech._IDRRef
+        LEFT JOIN _Reference64 as units ON parent._Fld1529RRef = units._IDRRef  
+    WHERE 
+            parent.[_Description] LIKE 'и%'
+            AND parent_tech.[_Description] IN ('Отливка', 'Отливная тяга резина', 'Отливная тяга пластик', 'Фиброгипс')
+            AND component.[_Description] NOT LIKE 'Отрисовка%'        
+    '''
+
+    ind_specs = pd.read_sql(query_ind_specs, engine_unf)
+    
+    # get total mold power
+    query_specs = f'''
+        -- specs.sql
+        SELECT 
+            parent._Description AS parent
+        --    , CASE
+        --        WHEN material.[_EnumOrder] = 0 THEN 'Гипс Г-16'
+        --        WHEN material.[_EnumOrder] = 1 THEN 'Полиуретан'
+        --        WHEN material.[_EnumOrder] = 2 THEN 'Фиброгипс'
+        --        WHEN material.[_EnumOrder] = 3 THEN 'Стеклофибробетон'
+        --    END AS material    
+            , CAST(parent._Fld1527 AS int) AS АртикулПродукта
+            , tech._Description AS tech
+            , units._Description AS unit
+            , specs._Description AS spec
+            , specs.[_Code] AS specCode
+            , CAST(specs._Fld16434 AS int) AS Резина
+            , CAST(specs._Fld16435 AS int) AS Пластик
+            , CAST(specs._Fld16175 AS int) AS ФормаПодИзгиб
+            , tool._LineNo2419 AS НомерСтроки
+            , items._Description AS Оснастка
+            , categories._Description AS toolGroup
+            , CAST(items._Fld1527 AS int) AS АртикулОснастки
+        --    , serial._Description AS serialNo
+            , serial._Fld16389 AS n_casts
+            , serial._Fld16388 AS cast_len
+        FROM _Reference122 AS specs
+            LEFT JOIN _Reference76 AS parent ON specs._OwnerIDRRef = parent._IDRRef
+            LEFT JOIN _Reference64 as units ON parent._Fld1529RRef = units._IDRRef    
+            LEFT JOIN _Reference79 as tech ON parent._Fld1533RRef = tech._IDRRef
+            LEFT JOIN _Reference122_VT2418 AS tool ON tool._Reference122_IDRRef = specs._IDRRef
+            LEFT JOIN _Reference76 AS items ON items._IDRRef = tool._Fld2421RRef
+            LEFT JOIN _Reference76 AS categories ON categories._IDRRef = items._ParentIDRRef
+        --    LEFT JOIN _Reference79 AS toolTech ON items._Fld1533RRef = toolTech._IDRRef
+        --    LEFT JOIN _Enum17382 AS material ON material._IDRRef = parent._Fld17384RRef
+            LEFT JOIN _Reference14491 AS serial ON serial._OwnerIDRRef = items._IDRRef
+        WHERE 
+            CAST(specs._Marked AS int) = 0    -- пометка удаления
+            AND CAST(specs._Fld35181 AS int) = 0  -- недействителен
+            AND tech._Description IN ('Отливка', 'Отливная тяга резина', 'Отливная тяга пластик', 'Фиброгипс')
+            AND categories._Description NOT IN ('Модель', 'Шаблоны', 'Сырье и материалы для производства', 'Под изгиб')   -- toolGroup
+            AND specs._Description NOT LIKE '%ФИ'
+            AND CAST(specs._Fld16175 AS int) = 0    -- ФормаПодИзгиб    
+    '''
+
+    mold_serials = pd.read_sql(query_specs, engine_unf)
+    mold_serials['pwr'] = mold_serials.apply(lambda r:
+        r.n_casts if r.unit!='п.м.'
+        else r.n_casts * r.cast_len / 1000
+        , axis=1
+    )
+    mold_pwr = mold_serials.groupby(['АртикулПродукта']).agg(sum).pwr
+
+    def get_item_pwr(job):
+        
+        if job.shop!='Отливка': return None
+        
+        k_night = 2 if night_shift else 1
+        casts_per_hr = 0.67 if job.tech == 'Фиброгипсф' else 1.25
+        
+        if job['item'][0] == 'и':
+            # get custom spec even if it is not in the same order
+            ind_spec = ind_specs[
+                (ind_specs.артикулРодитель==job.itemId) &
+                (ind_specs.компонентТехнология=="Формовочные работы") &
+                (ind_specs.n_casts.notnull() | ind_specs.n_casts > 0)
+            ]
+            if len(ind_spec) == 0:
+                return 0
+            ind_spec = ind_spec[ind_spec.specLineNo==(ind_spec.specLineNo.max())]   # if more than 1 row then the last one
+            ind_spec = ind_spec.iloc[0]
+            
+            # get number of individual molds
+            # works only for the specs in the same order
+            # otherwise it gets too complicated, `n_molds` assumed = 1 then
+            if job.specId:
+                subset = order[
+                    (order.specId==job.specId) &
+                    (order.shop=='Формы')
+                ]
+                subset = subset[subset.specLineNo==(subset.specLineNo.max())]
+                subset = subset.iloc[0]
+                n_molds = subset.qty
+            else:
+                n_molds = 1
+            
+            
+            if ind_spec.n_casts > 0:
+                if ind_spec.parentUnit == 'п.м.':
+                    return ind_spec.n_casts * ind_spec.cast_len * n_molds \
+                            * k_night * job.rate * casts_per_hr
+                else:
+                    return ind_spec.n_casts * n_molds * k_night * job.rate \
+                        * casts_per_hr
+            else:
+                return 0
+            
+        else:
+            try:
+                pwr = mold_pwr[job.itemId] * job.rate * casts_per_hr
+            except IndexError:
+                print(f'No mold power data for {job.item}.')
+            
+            return pwr * k_night
+    
+    order['pwr'] = order.apply(get_item_pwr, axis=1)
     
     return order
+
 
 
 def get_calendar(start_date: str ='20220901'):
@@ -185,6 +318,7 @@ def get_calendar(start_date: str ='20220901'):
     return calendar
 
 
+# TODO: implement night_shift
 def get_schedule(
     order, 
     timestamp,
@@ -195,6 +329,8 @@ def get_schedule(
     n_pullers  
 ):
     '''
+    Night shift means mold capacity doubles. Other shops are not affected.
+
     Schedule by hour.
     All jobs rounded up to the whole hour.
     Resources available capacity in roubles by hour.
@@ -209,7 +345,7 @@ def get_schedule(
     capacity = {
         'Модели': n_modelers * rate,
         'Формы': n_molders * rate,
-        'Отливка': n_casters * rate,
+        'Отливка': n_casters * rate * (2 if night_shift else 1),
         'Протяжка': n_pullers * rate
     }
     
@@ -263,10 +399,10 @@ def get_schedule(
         
         hr = 0
         if job.spec in custom_specs: 
-            scheduled_days = schedule[order.spec==job.spec].sum()
-            hr = scheduled_days[scheduled_days > 0].index.max()
+            scheduled_hrs = schedule[order.spec==job.spec].sum()
+            hr = scheduled_hrs[scheduled_hrs > 0].index.max()
             hr = 0 if pd.isnull(hr) else hr + 1
-            hr = math.ceil(hr / 8) * 8  # TODO: should not skip remaining hrs of a new day
+            hr = math.ceil(hr / 8) * 8  
             for ii in range(hr):
                 if ii not in schedule.columns:
                     schedule[ii] = 0.
@@ -289,7 +425,7 @@ def get_schedule(
                 hr_allocated += to_allocate
             
             hr += 1       
-            if hr > 400: break
+            if hr > 1600: break
         
         order.at[i, 'scheduled'] = True 
     
@@ -322,7 +458,7 @@ def log2days(log, start):
     calendar = get_calendar(start)
     
     if start:
-        dates_dict = dict(zip(range(log_days.day.max()), calendar.Дата))
+        dates_dict = dict(zip(range(log_days.day.max() + 1), calendar.Дата))
         log_days['date'] = log_days.day.map(dates_dict)
     else:
         log_days['date'] = None
@@ -349,7 +485,7 @@ def schedule(
         timestamp = dt.strptime(timestamp, '%d.%m.%Y %H:%M:%S')
     
     print('***read_order***')
-    order = read_order(order_no)
+    order = read_order(order_no, night_shift)
     
     print('***get_schedule***')
     schedule, log = get_schedule(

@@ -1,10 +1,9 @@
 # TODO
 
-1. Заменить номера дней на даты
+1. Chk err msgs.
 2. Проверить учет количества форм.
 
 # Consider 
-1. changing schedule format: tasks — rows, dates — columns
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
 
 # Start
@@ -28,3 +27,22 @@
     ]
 }
 ```
+
+# Build
+
+From `code` folder run  
+`docker build -t sashakang/scheduler .`
+
+# Run container
+
+Locally  
+`docker run -itv scheduling-vol:/credentials --rm -p 8000:8000 sashakang/scheduler`
+
+# Create volume
+
+`docker volume create scheduling-vol`
+
+# Volume location
+
+On Windows:  
+`\\wsl$\docker-desktop-data\version-pack-data\community\docker\volumes\scheduling-vol\_data\`
