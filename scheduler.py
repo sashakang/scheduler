@@ -12,7 +12,12 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # TODO: use different variables for different roles
-rate = 75_000 / 21 / 8
+rates = {
+    'Модели': 75_000 / 21 / 8,
+    'Формы': 75_000 / 21 / 8,
+    'Отливка': 75_000 / 21 / 8,
+    'Протяжка': 75_000 / 21 / 8
+}
 
 query_ind_specs = f'''
     -- complex_specs.sql
@@ -264,14 +269,14 @@ def fill_power(order, night_shift):
     def get_item_pwr(job):
         
         if job.itemId == 200167:    # ФР Изготовление одиночной формы
-            return max(0.125, rate / job.rate)  # always shall take 1 working day 
+            return max(0.125, rates[job.shop] / job.rate)  # always shall take 1 working day 
         
         elif job.shop == 'Модели': 
             volume = get_vol_from_spec(job)     
             std_days = mfr_params[mfr_params.id==job.itemId].std_model_days.values[0]
             days = std_days if volume <= 0.06 else std_days * (1 + volume)
             pwr = job.qty / days / 8
-            pwr = min(pwr, rate)
+            pwr = min(pwr, rates[job.shop])
             return pwr
         
         elif job.shop == 'Формы':
@@ -295,7 +300,7 @@ def fill_power(order, night_shift):
             if job.qty > 1:
                 days = math.ceil(days + job.qty * 1.5)
             pwr = job.qty / days / 8
-            pwr = min(pwr, rate)
+            pwr = min(pwr, rates[job.shop])
             return pwr
         
         elif job.shop == 'Протяжка':
@@ -441,10 +446,10 @@ def get_schedule(
     '''
 
     capacity = {
-        'Модели': n_modelers * rate,
-        'Формы': n_molders * rate,
-        'Отливка': n_casters * rate * (2 if night_shift else 1),
-        'Протяжка': n_pullers * rate
+        'Модели': n_modelers * rates['Модели'],
+        'Формы': n_molders * rates['Формы'],
+        'Отливка': n_casters * rates['Отливка'] * (2 if night_shift else 1),
+        'Протяжка': n_pullers * rates['Протяжка']
     }
     
     log = pd.DataFrame(columns=[
@@ -511,7 +516,7 @@ def get_schedule(
                     schedule[ii] = 0.
         
         job_allocated = 0
-        pwr_rub = rate if job.shop == 'Протяжка' else job.pwr_rub
+        pwr_rub = rates['Протяжка'] if job.shop == 'Протяжка' else job.pwr_rub
         shop = job.shop
         while job_allocated < job.pay: 
             if hr not in schedule.columns:
