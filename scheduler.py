@@ -5,13 +5,18 @@ import math
 from datetime import datetime as dt
 import sqlalchemy 
 
+import sys
+sys.tracebacklimit = 0
+
 engine_unf = get_engine(fname='../credentials/.prod_unf')
 engine_analytics = get_engine(fname='../credentials/.server_analytics')
 
 import warnings
 warnings.filterwarnings("ignore")
 
-# TODO: use different variables for different roles
+# TODO: find target values for molder and casters
+# TODO: check error messages in the stdout
+
 rates = {
     'Модели': 75_000 / 21 / 8,
     'Формы': 75_000 / 21 / 8,
@@ -320,7 +325,7 @@ def fill_power(order, night_shift):
             k_night = 2 if night_shift else 1
             casts_per_hr = 0.67 if job.tech == 'Фиброгипсф' else 1.25
             
-            if job['item'][0] == 'и':
+            if job['item'].startswith('и'):
                 # get custom spec even if it is not in the same order
                 ind_spec = ind_specs[
                     (ind_specs.артикулРодитель==job.itemId) &
@@ -340,6 +345,9 @@ def fill_power(order, night_shift):
                         (order.specId==job.specId) &
                         (order.shop=='Формы')
                     ]
+                    if subset.empty:
+                        raise RuntimeError(
+                            f'Ошибка в спецификации {job.spec} в строке {job.rowNo}.')
                     subset = subset[subset.specLineNo==(subset.specLineNo.max())]
                     subset = subset.iloc[0]
                     pwr = subset.qty * subset.n_casts * casts_per_hr
@@ -374,7 +382,10 @@ def fill_power(order, night_shift):
                 (order.shop=='Отливка')
             ]
         if len(cast) > 1:
-            raise Exception("Specification error: more than one product row.")
+            item = job['item']
+            raise RuntimeError(
+                f"Specification error: more than one product row for {item} in {job.rowNo} row."
+            )
         cast = cast.iloc[0]
         # TODO: also use diameter
         volume = cast.Высота * cast.Ширина * cast.Глубина / 10**9
@@ -396,7 +407,7 @@ def fill_power(order, night_shift):
                     10**6
                 )
         if not volume:
-            raise ValueError('Volume must be greater than 0.')
+            raise ValueError(f'Volume must be greater than 0.\n{job.__repr__()}')
         return volume
     
     order['pwr_units'] = order.apply(get_item_pwr, axis=1)
@@ -468,7 +479,9 @@ def get_schedule(
     ].spec.unique()
     
     def rearrange_customs():
-        
+        '''
+        Makes product the last row within custom spec.
+        '''
         # TODO: add check for specs shall have consequantial row numbers
         
         order['index2'] = order.index
@@ -478,10 +491,9 @@ def get_schedule(
             
             for row in rows:
                 if row == min(rows):
-                    if order.shop.values[row] not in ["Протяжка", "Отливка"]:
+                    if order.shop.loc[row] not in ["Протяжка", "Отливка"]:
                         print(
-                            "Custom spec error: production is not the 1st "
-                            "line in the spec:", 
+                            "Warning: production is not the 1st line in the custom spec:", 
                             spec
                         )
                     order.at[row, 'index2'] = max(rows)

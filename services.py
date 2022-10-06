@@ -33,7 +33,7 @@ def get_engine(
         f'?driver=ODBC Driver 17 for SQL Server'
         )
 
-    print(f'Connection to {login}@{db} created.')
+    print(f'Connected to {login}@{db}.')
     return engine
 
 
