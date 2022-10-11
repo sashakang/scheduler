@@ -14,7 +14,7 @@ engine_analytics = get_engine(fname='../credentials/.server_analytics')
 import warnings
 warnings.filterwarnings("ignore")
 
-# TODO: find target values for molder and casters
+# TODO: find target salary values for molder and casters
 # TODO: check error messages in the stdout
 
 rates = {
@@ -211,7 +211,7 @@ def read_order(order_no):
 
 def fill_power(order, night_shift):
     # TODO: use power data, not const(2)
-    
+    # TODO: get mold power for individual products from mold stock, if unavailable use individual spec
     # get total mold power
     query_specs = f'''
         -- specs.sql
@@ -323,7 +323,7 @@ def fill_power(order, night_shift):
         
         else:
             k_night = 2 if night_shift else 1
-            casts_per_hr = 0.67 if job.tech == 'Фиброгипсф' else 1.25
+            casts_per_hr = 0.67 if job.tech == 'Фиброгипс' else 1.25
             
             if job['item'].startswith('и'):
                 # get custom spec even if it is not in the same order
@@ -511,21 +511,35 @@ def get_schedule(
     
     for i, job in order.iterrows():
         print(f'{i=}')
-        if job.scheduled: continue      # TODO: excessive?
+        if job.scheduled: 
+            continue      # TODO: excessive?
         
         hr = 0
         if job.spec in custom_specs: 
-            scheduled_hrs = schedule[order.spec==job.spec].astype(bool).sum()
-            hr = scheduled_hrs[scheduled_hrs > 0].index.max()
-            hr = (
-                0 if pd.isnull(hr) 
-                else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
-                else hr + 1
-            )
-            hr = math.ceil(hr / 8) * 8      # next jobs within the spec starts next day
-            for ii in range(hr):
-                if ii not in schedule.columns:
-                    schedule[ii] = 0.
+            # TODO: custom items can be within a spec and also have extra rows without spec
+            # TODO: shall be interrelated via resource constraints
+            
+            # if last mold within spec and multiple molds
+            # if (
+            #     job.specLineNo == order[order.spec==job.spec].specLineNo.max()
+            #     and job.shop == 'Формы' 
+            #     and job.qty > 1
+            # ):    
+            #     pass
+            if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
+                scheduled_hrs = schedule[order.spec==job.spec].astype(bool).sum()
+                hr = scheduled_hrs[scheduled_hrs > 0].index.max()
+                hr = (
+                    0 if pd.isnull(hr) 
+                    else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
+                    else hr + 1
+                )
+                hr = math.ceil(hr / 8) * 8      # next jobs within the spec starts next day
+                for ii in range(hr):
+                    if ii not in schedule.columns:
+                        schedule[ii] = 0.
+            # else:   # custom item with more than one mold
+            #     pass
         
         job_allocated = 0
         pwr_rub = rates['Протяжка'] if job.shop == 'Протяжка' else job.pwr_rub
@@ -554,20 +568,6 @@ def get_schedule(
     log['timestamp'] = timestamp
     
     return schedule, log
-
-
-def schedule2days(schedule):
-    # TODO: Won't be needed. For export to Excel only. Delete.
-    schedule_days = pd.DataFrame(index=schedule.index)
-    for d in range(math.ceil(schedule.shape[1] / 8)):
-        right_boundary = min(d * 8 + 7, schedule.shape[1])
-        schedule_days[d] = schedule.loc[:, d * 8 : right_boundary].sum(axis=1)
-    
-    calendar = get_calendar()
-    schedule_days.set_axis(calendar[:schedule_days.shape[1]].date_str.values, 
-                           axis=1, copy=False)
-    
-    return schedule_days
 
 
 def log2days(log, start):
@@ -635,7 +635,6 @@ def schedule(
     )
     
     print('***outputting***')
-    schedule_days = schedule2days(schedule)
     
     log.to_sql(
         name='order_prod_sched',
@@ -650,21 +649,6 @@ def schedule(
             'pay': sqlalchemy.Float
         }
     )    
-    
-    order['timestamp'] = timestamp
-    sched_matrix = order.merge(
-        schedule_days,
-        how='left',
-        left_index=True,
-        right_index=True
-    )
-    
-    sched_matrix.to_sql(
-        name='sched_matrix',
-        con=engine_analytics,
-        if_exists='replace',
-        index=False
-    )
     
     print(f'{order.shape=}')
     print(order.iloc[:5, :6])
