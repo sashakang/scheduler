@@ -64,7 +64,7 @@ WHERE
 ind_specs = pd.read_sql(query_ind_specs, engine_unf)
 
 def read_order(order_no):
-
+ 
     query_order = f'''
     -- order scheduling data
     -- from all_prices_4.sql
@@ -384,7 +384,7 @@ def fill_power(order, night_shift):
         if len(cast) > 1:
             item = job['item']
             raise RuntimeError(
-                f"Specification error: more than one product row for {item} in {job.rowNo} row."
+                f"Ошибка в спецификации индивидуального изделия: более одной строки для производства изделия для {item} в строке {job.rowNo} заказа покупателя."
             )
         cast = cast.iloc[0]
         # TODO: also use diameter
