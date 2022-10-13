@@ -107,7 +107,7 @@ def read_order(order_no):
     WHERE row_num = 1
     )
     , specs AS (
-        -- complex_specs.sql
+        -- complex_specs.sql 
         SELECT 
         specs._Description AS Спецификация
         , specs.[_Code] AS specId
@@ -384,7 +384,8 @@ def fill_power(order, night_shift):
         if len(cast) > 1:
             item = job['item']
             raise RuntimeError(
-                f"Ошибка в спецификации индивидуального изделия: более одной строки для производства изделия для {item} в строке {job.rowNo} заказа покупателя."
+                "Ошибка в спецификации индивидуального изделия: более одной строки "
+                f"для производства изделия для {item} в строке {job.rowNo} заказа покупателя."
             )
         cast = cast.iloc[0]
         # TODO: also use diameter

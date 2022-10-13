@@ -1,7 +1,11 @@
 # TODO
 
-1. Chk err msgs.
-2. Проверить учет количества форм.
+1. ~~Удалить отрисовку~~
+2. ~~Chk incomlete scheduling in 22552/1.~~
+3. ~~Fix timeout error in Excel.~~
+4. Generate complete error report at once.
+5. Chk err msgs.
+6. Проверить учет количества форм.
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
