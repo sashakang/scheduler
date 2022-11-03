@@ -284,7 +284,7 @@ def fill_power(order, night_shift):
                 std_days = mfr_params[mfr_params.id==job.itemId].std_model_days.values[0]
                 days = std_days if volume <= 0.06 else std_days * (1 + volume)
                 pwr = job.qty / days / 8
-                pwr = min(pwr, rates[job.shop])
+                pwr = min(pwr, rates[job.shop]/job.rate)
                 return pwr
             
             elif job.shop == 'Формы':
@@ -308,7 +308,7 @@ def fill_power(order, night_shift):
                 if job.qty > 1:
                     days = math.ceil(days + job.qty * 1.5)
                 pwr = job.qty / days / 8
-                pwr = min(pwr, rates[job.shop])
+                pwr = min(pwr, rates[job.shop] / job.rate)
                 return pwr
             
             elif job.shop == 'Протяжка':
@@ -334,7 +334,7 @@ def fill_power(order, night_shift):
                         (ind_specs.артикулРодитель==job.itemId) &
                         (ind_specs.компонентТехнология=="Формовочные работы") &
                         (ind_specs.n_casts.notnull() | ind_specs.n_casts > 0) &
-                        (ind_specs.Артикул!=200181)     # не пуансон
+                        (ind_specs.артикулКомпонент!=200181)     # не пуансон
                     ]
                     if len(ind_spec) == 0:
                         return 0
@@ -409,10 +409,14 @@ def fill_power(order, night_shift):
             ]
         if len(cast) > 1:
             item = job['item']
-            err_log.loc[len(err_log), 'err_msg'] = (
+            err_msg = (
                 "Ошибка в спецификации индивидуального изделия: более одной строки "
-                f"для производства изделия для {item} в строке {job.rowNo} заказа покупателя."
+                f"для производства изделия для {item} в строках "
+                f"{', '.join(cast.rowNo.apply(str))} заказа покупателя."
             )
+
+            err_log.loc[len(err_log), 'err_msg'] = err_msg
+            print(err_msg)
             # raise RuntimeError(
             #     "Ошибка в спецификации индивидуального изделия: более одной строки "
             #     f"для производства изделия для {item} в строке {job.rowNo} заказа покупателя."
@@ -426,7 +430,8 @@ def fill_power(order, night_shift):
             def get_cast_len_from_spec(job):
                 mold = order[
                         (order.spec==job.spec) & 
-                        (order.shop=='Формы')
+                        (order.shop=='Формы') &
+                        (order.Артикул!=200181)     # не пуансон
                     ]
                 mold = mold.sort_values('rowNo').iloc[-1]
                 return mold.cast_len
@@ -545,7 +550,11 @@ def get_schedule(
     
     for i, job in order.iterrows():
         if job.pwr_rub == 0 or job.pwr_units == 0:
-            err_msg = f'Zero power:\n{job=}'
+            err_msg = (
+                f'Zero power: строка {job.rowNo}, '
+                f'спецификация {job.spec}, '
+                f'{job["item"]}'
+            )
             print(err_msg)
             err_log.loc[len(err_log), 'err_msg'] = err_msg
             continue 
