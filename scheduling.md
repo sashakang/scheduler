@@ -32,6 +32,14 @@
 }
 ```
 
+Setup VSCode to debug a container: https://medium.com/@nhduy88/setup-debugger-for-your-fastapi-project-with-vscode-and-docker-compose-bc4f61702b69.  
+Additionally to use external volume add this to `docker-compose.debug.yml`:
+```
+volumes:
+  scheduling-vol:
+    external: true
+```
+
 # Build
 
 From `code` folder run  

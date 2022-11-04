@@ -190,6 +190,9 @@ def read_order(order_no):
     '''
 
     order = pd.read_sql(query_order, engine_unf)
+    
+    if len(order) == 0:
+        raise ValueError ('Получен пустой заказ')
 
     shops = {
         "Протяжка": "Протяжка",
@@ -551,7 +554,7 @@ def get_schedule(
     for i, job in order.iterrows():
         if job.pwr_rub == 0 or job.pwr_units == 0:
             err_msg = (
-                f'Zero power: строка {job.rowNo}, '
+                f'Нулевая мощность: строка {job.rowNo}, '
                 f'спецификация {job.spec}, '
                 f'{job["item"]}'
             )
