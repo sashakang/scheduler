@@ -362,7 +362,11 @@ def fill_power(order, night_shift):
                         subset = subset[subset.specLineNo==(subset.specLineNo.max())]
                         subset = subset.iloc[0]
                         if subset.n_casts== 0:
-                            subset = subset[subset.specLineNo==(subset.specLineNo.max()-1)]
+                            subset = order[
+                                (order.specId==job.specId) &
+                                (order.shop=='Формы')
+                            ]
+                            subset[subset.specLineNo==(subset.specLineNo.max()-1)]
                             subset = subset.iloc[0]
                             
                         if subset.n_casts== 0:
@@ -370,7 +374,7 @@ def fill_power(order, night_shift):
                                 f'в строке {job["rowNo"]} не заполнено')
                             err_log.loc[len(err_log), 'err_msg'] = err_msg
                             print(err_msg)
-                            raise ValueError(err_msg)
+                            # raise ValueError(err_msg)
                         pwr = subset.qty * subset.n_casts * casts_per_hr
                         if job.unit == 'п.м.':
                             if subset.cast_len== 0:
@@ -403,8 +407,14 @@ def fill_power(order, night_shift):
                         print(f'No mold power data for {job.item}.')
                     return pwr_units * k_night
         except:
-            pass 
+            err_msg = (
+                f"Не удалось рассчитать мощность формы {job.spec}/{job['item']} в строке "
+                f"{job.rowNo} заказа."
+            )
 
+            err_log.loc[len(err_log), 'err_msg'] = err_msg
+            print(err_msg)
+            
     def get_vol_from_spec(job):
         cast = order[
                 (order.spec==job.spec) & 
@@ -434,7 +444,7 @@ def fill_power(order, night_shift):
                 mold = order[
                         (order.spec==job.spec) & 
                         (order.shop=='Формы') &
-                        (order.Артикул!=200181)     # не пуансон
+                        (order.itemId!=200181)     # не пуансон
                     ]
                 mold = mold.sort_values('rowNo').iloc[-1]
                 return mold.cast_len
@@ -447,7 +457,9 @@ def fill_power(order, night_shift):
                     10**6
                 )
         if not volume:
-            err_log.loc[len(err_log), 'err_msg'] = f'Объем изделия должен быть больше 0.\n{job}'
+            err_log.loc[len(err_log), 'err_msg'] = (
+                f'Объем изделия должен быть больше 0. Строка {job.rowNo}, {job.spec}/{job["item"]}'
+            )
             return 0
             # raise ValueError(f'Volume must be greater than 0.\n{job.__repr__()}')
         return volume
@@ -560,8 +572,8 @@ def get_schedule(
             )
             print(err_msg)
             err_log.loc[len(err_log), 'err_msg'] = err_msg
-            continue 
-        print(f'{i=}')
+            continue
+        # print(f'{i=}')
         if job.scheduled: 
             continue      # TODO: excessive?
         
@@ -583,7 +595,7 @@ def get_schedule(
             #     pass
             if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
                 scheduled_hrs = schedule[(order.spec==job.spec).values].astype(bool).sum()
-                hr = scheduled_hrs[scheduled_hrs > 0].index.max()
+                hr = scheduled_hrs[scheduled_hrs > 0].index.max()   # last hour scheduled for the spec
                 hr = (
                     0 if pd.isnull(hr) 
                     else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
@@ -603,8 +615,8 @@ def get_schedule(
             if hr not in schedule.columns:
                 schedule[hr] = 0.
             
-            hr_allocated = schedule.loc[(order.shop==shop).values, hr].sum()
-            available_capacity = capacity[shop] - hr_allocated
+            hrs_allocated = schedule.loc[(order.shop==shop).values, hr].sum()
+            available_capacity = capacity[shop] - hrs_allocated
             if available_capacity > 0:
                 to_allocate = min(
                     available_capacity, pwr_rub, job.pay - job_allocated)
@@ -612,12 +624,29 @@ def get_schedule(
                 unit_prod = to_allocate / job.rate
                 log.loc[len(log)] = [job.orderNo, job.rowNo, hr, to_allocate, unit_prod]
                 job_allocated += to_allocate
-                hr_allocated += to_allocate
+                hrs_allocated += to_allocate
             
             hr += 1       
-            if hr > 1600: break
+            if hr > 3200: 
+                err_msg = (
+                    f'Превышен горизонт планирования: строка {job.rowNo}, '
+                    + (f'{job.spec}/' if job.spec else '') + f'{job["item"]}'
+                )
+                print(err_msg)
+                err_log.loc[len(err_log), 'err_msg'] = err_msg                
+                break
         
+        print(f'{i=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
         order.at[i, 'scheduled'] = True 
+        
+        if job.pay > job_allocated:
+            err_msg = (
+                f'Запланирован неполный объем: строка {job.rowNo}, '
+                + (f'{job.spec}/' if job.spec else '') + f'{job["item"]}, '
+                f'{job_allocated}/{job.pay} руб.'
+            )
+            print(err_msg)
+            err_log.loc[len(err_log), 'err_msg'] = err_msg                 
     
     
     log['timestamp'] = timestamp
@@ -711,8 +740,10 @@ def schedule(
     print(log.head())
     
     err_log['timestamp'] = timestamp
+    print('-'*20)
     print("ERR LOG")
     print(err_log)
+    print('-'*20)
     err_log.to_sql(
         name='scheduling_err_log',
         con=engine_analytics,
