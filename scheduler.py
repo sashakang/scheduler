@@ -636,7 +636,7 @@ def get_schedule(
                 err_log.loc[len(err_log), 'err_msg'] = err_msg                
                 break
         
-        print(f'{i=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
+        print(f'{i=}, {job.rowNo=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
         order.at[i, 'scheduled'] = True 
         
         if job.pay > job_allocated:
@@ -741,9 +741,10 @@ def schedule(
     
     err_log['timestamp'] = timestamp
     print('-'*20)
-    print("ERR LOG")
-    print(err_log)
-    print('-'*20)
+    print(f"ERR LOG, {len(err_log)} records.")
+    if len(err_log) > 0:
+        print(err_log)
+        print('-'*20)
     err_log.to_sql(
         name='scheduling_err_log',
         con=engine_analytics,

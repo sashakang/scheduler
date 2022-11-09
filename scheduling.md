@@ -58,3 +58,8 @@ Locally
 
 On Windows:  
 `\\wsl$\docker-desktop-data\version-pack-data\community\docker\volumes\scheduling-vol\_data\`
+
+
+# Attach terminal to a running container
+
+`docker exec -it [container ID] bash`
