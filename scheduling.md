@@ -1,7 +1,11 @@
 # TODO
 
-1. Chk err msgs.
-2. Проверить учет количества форм.
+1. ~~Удалить отрисовку~~
+2. ~~Chk incomlete scheduling in 22552/1.~~
+3. ~~Fix timeout error in Excel.~~
+4. Generate complete error report at once.
+5. Chk err msgs.
+6. Проверить учет количества форм.
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
@@ -28,6 +32,14 @@
 }
 ```
 
+Setup VSCode to debug a container: https://medium.com/@nhduy88/setup-debugger-for-your-fastapi-project-with-vscode-and-docker-compose-bc4f61702b69.  
+Additionally to use external volume add this to `docker-compose.debug.yml`:
+```
+volumes:
+  scheduling-vol:
+    external: true
+```
+
 # Build
 
 From `code` folder run  
@@ -46,3 +58,8 @@ Locally
 
 On Windows:  
 `\\wsl$\docker-desktop-data\version-pack-data\community\docker\volumes\scheduling-vol\_data\`
+
+
+# Attach terminal to a running container
+
+`docker exec -it [container ID] bash`

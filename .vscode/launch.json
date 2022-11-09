@@ -1,0 +1,45 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        // Automatic FastAPI configuration
+        {
+            "name": "Python: FastAPI",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "scheduling_server:app",
+                "--reload"
+            ],
+            "jinja": true,
+            "justMyCode": true
+        },
+        
+        // https://stackoverflow.com/questions/60205056/debug-fastapi-application-in-vscode
+        {
+            "name": "Python: module",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "scheduling_server:app",
+                "--reload"
+            ]
+        },
+
+        // https://medium.com/@nhduy88/setup-debugger-for-your-fastapi-project-with-vscode-and-docker-compose-bc4f61702b69
+        {
+            "name": "Python: Remote Attach",
+            "type": "python",
+            "request": "attach",
+            "port": 5678,
+            "host": "localhost",
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "/code"
+                }
+            ]
+        }        
+    ]
+}

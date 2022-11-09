@@ -19,11 +19,13 @@ RUN ACCEPT_EULA=Y apt-get -y --no-install-recommends install msodbcsql17
 RUN mkdir /code
 WORKDIR /code
 
-COPY . /code/
-
+COPY ./requirements.txt /code
 RUN python -m pip install -U pip
 RUN pip install -r requirements.txt 
-COPY . .
+
+COPY . /code/
+# what does this line do? Is it really necessary?
+COPY . .    
 
 ENTRYPOINT [  ]
 CMD ["uvicorn", "scheduling_server:app", "--host", "0.0.0.0", "--port", "8000"]

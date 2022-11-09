@@ -63,6 +63,8 @@ WHERE
 
 ind_specs = pd.read_sql(query_ind_specs, engine_unf)
 
+err_log = pd.DataFrame(columns=['err_msg'])
+    
 def read_order(order_no):
  
     query_order = f'''
@@ -107,7 +109,7 @@ def read_order(order_no):
     WHERE row_num = 1
     )
     , specs AS (
-        -- complex_specs.sql
+        -- complex_specs.sql 
         SELECT 
         specs._Description AS Спецификация
         , specs.[_Code] AS specId
@@ -188,6 +190,9 @@ def read_order(order_no):
     '''
 
     order = pd.read_sql(query_order, engine_unf)
+    
+    if len(order) == 0:
+        raise ValueError ('Получен пустой заказ')
 
     shops = {
         "Протяжка": "Протяжка",
@@ -201,8 +206,9 @@ def read_order(order_no):
     order['shop'] = order.tech.map(shops)
     order.shop.fillna('Прочие', inplace=True)
 
-    print('Excluded:')
-    print(order[order.shop=='Прочие'][['rowNo', 'item']])
+    if sum(order.shop=='Прочие'):
+        print('Excluded:')
+        print(order[order.shop=='Прочие'][['rowNo', 'item']])
 
     order = order[order.shop!='Прочие']
     
@@ -272,110 +278,143 @@ def fill_power(order, night_shift):
     mfr_params = pd.read_sql(query_mfr_params, engine_analytics)
 
     def get_item_pwr(job):
-        
-        if job.itemId == 200167:    # ФР Изготовление одиночной формы
-            return max(0.125, rates[job.shop] / job.rate)  # always shall take 1 working day 
-        
-        elif job.shop == 'Модели': 
-            volume = get_vol_from_spec(job)     
-            std_days = mfr_params[mfr_params.id==job.itemId].std_model_days.values[0]
-            days = std_days if volume <= 0.06 else std_days * (1 + volume)
-            pwr = job.qty / days / 8
-            pwr = min(pwr, rates[job.shop])
-            return pwr
-        
-        elif job.shop == 'Формы':
-            volume = get_vol_from_spec(job)
-            has_punch = 200181 in order[order.spec==job.spec].itemId.values     # punch itemId
-            model_tariff_id = order[
-                (order.spec==job.spec) &
-                (order.shop=='Модели') &
-                (order.specLineNo==2)
-            ].itemId.values[0]
-            if has_punch:
-                std_days = mfr_params[
-                    mfr_params.id==model_tariff_id
-                ].std_mold_days_with_punch.values[0]
-            else:
-                std_days = mfr_params[
-                    mfr_params.id==model_tariff_id
-                ].std_mold_days_no_punch.values[0]
+        try: 
+            if job.itemId == 200167:    # ФР Изготовление одиночной формы
+                return max(0.125, rates[job.shop] / job.rate)  # always shall take 1 working day 
+             
+            elif job.shop == 'Модели': 
+                volume = get_vol_from_spec(job)     
+                std_days = mfr_params[mfr_params.id==job.itemId].std_model_days.values[0]
+                days = std_days if volume <= 0.06 else std_days * (1 + volume)
+                pwr = job.qty / days / 8
+                pwr = min(pwr, rates[job.shop]/job.rate)
+                return pwr
             
-            days = std_days if volume <= 0.06 else std_days * (1 + volume)
-            if job.qty > 1:
-                days = math.ceil(days + job.qty * 1.5)
-            pwr = job.qty / days / 8
-            pwr = min(pwr, rates[job.shop])
-            return pwr
-        
-        elif job.shop == 'Протяжка':
-            semiperimeter = job.Глубина + (
-                job.Ширина if job.category in [
-                    "Полуколонны: ствол гладкий",
-                    "Пилястры: ствол гладкий"
-                ]
-                else job.Высота
-            )
-            if semiperimeter > 170: return 18.4 / 8
-            elif semiperimeter > 130: return 36.8 / 8
-            elif semiperimeter > 70: return 55.2 / 8
-            else: return 73.6 / 8
-        
-        else:
-            k_night = 2 if night_shift else 1
-            casts_per_hr = 0.67 if job.tech == 'Фиброгипс' else 1.25
-            
-            if job['item'].startswith('и'):
-                # get custom spec even if it is not in the same order
-                ind_spec = ind_specs[
-                    (ind_specs.артикулРодитель==job.itemId) &
-                    (ind_specs.компонентТехнология=="Формовочные работы") &
-                    (ind_specs.n_casts.notnull() | ind_specs.n_casts > 0)
-                ]
-                if len(ind_spec) == 0:
-                    return 0
-                ind_spec = ind_spec[ind_spec.specLineNo==(ind_spec.specLineNo.max())]   # if more than 1 row then the last one
-                ind_spec = ind_spec.iloc[0]
-                
-                # get number of individual molds
-                # works only for the specs in the same order
-                # otherwise it gets too complicated, in this case `n_molds` = 1 
-                if job.specId:
-                    subset = order[
-                        (order.specId==job.specId) &
-                        (order.shop=='Формы')
-                    ]
-                    if subset.empty:
-                        raise RuntimeError(
-                            f'Ошибка в спецификации {job.spec} в строке {job.rowNo}.')
-                    subset = subset[subset.specLineNo==(subset.specLineNo.max())]
-                    subset = subset.iloc[0]
-                    pwr = subset.qty * subset.n_casts * casts_per_hr
-                    if job.unit == 'п.м.':
-                        pwr *= subset.cast_len
-                    return pwr
-                
-                elif ind_spec.n_casts > 0:
-                    # if no spec in the order than assume 1 mold is available
-                    pwr = (
-                        ind_spec.n_casts 
-                        * k_night 
-                        * casts_per_hr
-                    )
-                    return (
-                        pwr if ind_spec.parentUnit != 'п.м.'
-                        else pwr * ind_spec.cast_len
-                    )
+            elif job.shop == 'Формы':
+                volume = get_vol_from_spec(job)
+                has_punch = 200181 in order[order.spec==job.spec].itemId.values     # punch itemId
+                model_tariff_id = order[
+                    (order.spec==job.spec) &
+                    (order.shop=='Модели') &
+                    (order.specLineNo==2)
+                ].itemId.values[0]
+                if has_punch:
+                    std_days = mfr_params[
+                        mfr_params.id==model_tariff_id
+                    ].std_mold_days_with_punch.values[0]
                 else:
-                    return 0
+                    std_days = mfr_params[
+                        mfr_params.id==model_tariff_id
+                    ].std_mold_days_no_punch.values[0]
                 
+                days = std_days if volume <= 0.06 else std_days * (1 + volume)
+                if job.qty > 1:
+                    days = math.ceil(days + job.qty * 1.5)
+                pwr = job.qty / days / 8
+                pwr = min(pwr, rates[job.shop] / job.rate)
+                return pwr
+            
+            elif job.shop == 'Протяжка':
+                semiperimeter = job.Глубина + (
+                    job.Ширина if job.category in [
+                        "Полуколонны: ствол гладкий",
+                        "Пилястры: ствол гладкий"
+                    ]
+                    else job.Высота
+                )
+                if semiperimeter > 170: return 18.4 / 8
+                elif semiperimeter > 130: return 36.8 / 8
+                elif semiperimeter > 70: return 55.2 / 8
+                else: return 73.6 / 8
+             
             else:
-                try:
-                    pwr_units = mold_pwr[job.itemId] * casts_per_hr
-                except IndexError:
-                    print(f'No mold power data for {job.item}.')
-                return pwr_units * k_night
+                k_night = 2 if night_shift else 1
+                casts_per_hr = 0.67 if job.tech == 'Фиброгипс' else 1.25
+                
+                if job['item'].startswith('и'):
+                    # get custom spec even if it is not in the same order
+                    ind_spec = ind_specs[
+                        (ind_specs.артикулРодитель==job.itemId) &
+                        (ind_specs.компонентТехнология=="Формовочные работы") &
+                        (ind_specs.n_casts.notnull() | ind_specs.n_casts > 0) &
+                        (ind_specs.артикулКомпонент!=200181)     # не пуансон
+                    ]
+                    if len(ind_spec) == 0:
+                        return 0
+                    ind_spec = ind_spec[ind_spec.specLineNo==(ind_spec.specLineNo.max())]   # if more than 1 row then the last one
+                    ind_spec = ind_spec.iloc[0]
+                    
+                    # get number of individual molds
+                    # works only for the specs in the same order
+                    # otherwise it gets too complicated, in this case `n_molds` = 1 
+                    if job.specId:
+                        subset = order[
+                            (order.specId==job.specId) &
+                            (order.shop=='Формы')
+                        ]
+                        if subset.empty:
+                            err_log.loc[len(err_log), 'err_msg'] = {
+                                'err_msg': f'Ошибка в спецификации {job.spec} в строке {job.rowNo}.'
+                            }
+                            return 0
+                            # raise RuntimeError(
+                            #     f'Ошибка в спецификации {job.spec} в строке {job.rowNo}.')
+                        subset = subset[subset.specLineNo==(subset.specLineNo.max())]
+                        subset = subset.iloc[0]
+                        if subset.n_casts== 0:
+                            subset = order[
+                                (order.specId==job.specId) &
+                                (order.shop=='Формы')
+                            ]
+                            subset[subset.specLineNo==(subset.specLineNo.max()-1)]
+                            subset = subset.iloc[0]
+                            
+                        if subset.n_casts== 0:
+                            err_msg = (f'Количество отливок в форме {job["item"]} '
+                                f'в строке {job["rowNo"]} не заполнено')
+                            err_log.loc[len(err_log), 'err_msg'] = err_msg
+                            print(err_msg)
+                            # raise ValueError(err_msg)
+                        pwr = subset.qty * subset.n_casts * casts_per_hr
+                        if job.unit == 'п.м.':
+                            if subset.cast_len== 0:
+                                err_msg = (f'Длина погонажной отливки {job["item"]} '
+                                    f'в строке {job["rowNo"]} не заполнена')
+                                err_log.loc[len(err_log), 'err_msg'] = err_msg
+                                print(err_msg)
+                                raise ValueError(err_msg)
+                            pwr *= subset.cast_len
+                        return pwr
+                    
+                    elif ind_spec.n_casts > 0:
+                        # if no spec in the order than assume 1 mold is available
+                        pwr = (
+                            ind_spec.n_casts 
+                            * k_night 
+                            * casts_per_hr
+                        )
+                        return (
+                            pwr if ind_spec.parentUnit != 'п.м.'
+                            else pwr * ind_spec.cast_len
+                        )
+                    else:
+                        return 0 
+                
+                else:
+                    try:
+                        pwr_units = mold_pwr[job.itemId] * casts_per_hr
+                    except IndexError:
+                        print(f'No mold power data for {job.item}.')
+                    return pwr_units * k_night
+        except:
+            err_msg = (
+                f"Не удалось рассчитать мощность формы {job.spec}/{job['item']} в строке "
+                f"{job.rowNo} заказа."
+            )
 
+            err_log.loc[len(err_log), 'err_msg'] = err_msg
+            print(err_msg)
+            
     def get_vol_from_spec(job):
         cast = order[
                 (order.spec==job.spec) & 
@@ -383,9 +422,19 @@ def fill_power(order, night_shift):
             ]
         if len(cast) > 1:
             item = job['item']
-            raise RuntimeError(
-                f"Ошибка в спецификации индивидуального изделия: более одной строки для производства изделия для {item} в строке {job.rowNo} заказа покупателя."
+            err_msg = (
+                "Ошибка в спецификации индивидуального изделия: более одной строки "
+                f"для производства изделия для {item} в строках "
+                f"{', '.join(cast.rowNo.apply(str))} заказа покупателя."
             )
+
+            err_log.loc[len(err_log), 'err_msg'] = err_msg
+            print(err_msg)
+            # raise RuntimeError(
+            #     "Ошибка в спецификации индивидуального изделия: более одной строки "
+            #     f"для производства изделия для {item} в строке {job.rowNo} заказа покупателя."
+            # )
+            return 0
         cast = cast.iloc[0]
         # TODO: also use diameter
         volume = cast.Высота * cast.Ширина * cast.Глубина / 10**9
@@ -394,7 +443,8 @@ def fill_power(order, night_shift):
             def get_cast_len_from_spec(job):
                 mold = order[
                         (order.spec==job.spec) & 
-                        (order.shop=='Формы')
+                        (order.shop=='Формы') &
+                        (order.itemId!=200181)     # не пуансон
                     ]
                 mold = mold.sort_values('rowNo').iloc[-1]
                 return mold.cast_len
@@ -407,7 +457,11 @@ def fill_power(order, night_shift):
                     10**6
                 )
         if not volume:
-            raise ValueError(f'Volume must be greater than 0.\n{job.__repr__()}')
+            err_log.loc[len(err_log), 'err_msg'] = (
+                f'Объем изделия должен быть больше 0. Строка {job.rowNo}, {job.spec}/{job["item"]}'
+            )
+            return 0
+            # raise ValueError(f'Volume must be greater than 0.\n{job.__repr__()}')
         return volume
     
     order['pwr_units'] = order.apply(get_item_pwr, axis=1)
@@ -510,11 +564,24 @@ def get_schedule(
     order['scheduled'] = False
     
     for i, job in order.iterrows():
-        print(f'{i=}')
+        if job.pwr_rub == 0 or job.pwr_units == 0:
+            err_msg = (
+                f'Нулевая мощность: строка {job.rowNo}, '
+                f'спецификация {job.spec}, '
+                f'{job["item"]}'
+            )
+            print(err_msg)
+            err_log.loc[len(err_log), 'err_msg'] = err_msg
+            continue
+        # print(f'{i=}')
         if job.scheduled: 
             continue      # TODO: excessive?
         
         hr = 0
+        # duplicated
+        if hr not in schedule.columns:
+            schedule[hr] = 0.
+                    
         if job.spec in custom_specs: 
             # TODO: custom items can be within a spec and also have extra rows without spec
             # TODO: shall be interrelated via resource constraints
@@ -527,8 +594,8 @@ def get_schedule(
             # ):    
             #     pass
             if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
-                scheduled_hrs = schedule[order.spec==job.spec].astype(bool).sum()
-                hr = scheduled_hrs[scheduled_hrs > 0].index.max()
+                scheduled_hrs = schedule[(order.spec==job.spec).values].astype(bool).sum()
+                hr = scheduled_hrs[scheduled_hrs > 0].index.max()   # last hour scheduled for the spec
                 hr = (
                     0 if pd.isnull(hr) 
                     else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
@@ -548,8 +615,8 @@ def get_schedule(
             if hr not in schedule.columns:
                 schedule[hr] = 0.
             
-            hr_allocated = schedule.loc[order.shop==shop, hr].sum()
-            available_capacity = capacity[shop] - hr_allocated
+            hrs_allocated = schedule.loc[(order.shop==shop).values, hr].sum()
+            available_capacity = capacity[shop] - hrs_allocated
             if available_capacity > 0:
                 to_allocate = min(
                     available_capacity, pwr_rub, job.pay - job_allocated)
@@ -557,12 +624,29 @@ def get_schedule(
                 unit_prod = to_allocate / job.rate
                 log.loc[len(log)] = [job.orderNo, job.rowNo, hr, to_allocate, unit_prod]
                 job_allocated += to_allocate
-                hr_allocated += to_allocate
+                hrs_allocated += to_allocate
             
             hr += 1       
-            if hr > 1600: break
+            if hr > 3200: 
+                err_msg = (
+                    f'Превышен горизонт планирования: строка {job.rowNo}, '
+                    + (f'{job.spec}/' if job.spec else '') + f'{job["item"]}'
+                )
+                print(err_msg)
+                err_log.loc[len(err_log), 'err_msg'] = err_msg                
+                break
         
+        print(f'{i=}, {job.rowNo=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
         order.at[i, 'scheduled'] = True 
+        
+        if job.pay > job_allocated:
+            err_msg = (
+                f'Запланирован неполный объем: строка {job.rowNo}, '
+                + (f'{job.spec}/' if job.spec else '') + f'{job["item"]}, '
+                f'{job_allocated}/{job.pay} руб.'
+            )
+            print(err_msg)
+            err_log.loc[len(err_log), 'err_msg'] = err_msg                 
     
     
     log['timestamp'] = timestamp
@@ -655,6 +739,24 @@ def schedule(
     print(f'{schedule.shape=}')
     print(log.head())
     
+    err_log['timestamp'] = timestamp
+    print('-'*20)
+    print(f"ERR LOG, {len(err_log)} records.")
+    if len(err_log) > 0:
+        print(err_log)
+        print('-'*20)
+    err_log.to_sql(
+        name='scheduling_err_log',
+        con=engine_analytics,
+        if_exists='replace',
+        index=False,
+        dtype={
+            'timestamp': sqlalchemy.DateTime,
+            'err_msg': sqlalchemy.Text
+        }
+    )
+        
+    print(f'{engine_unf=}')
     
     
 if __name__ == '__main__':
