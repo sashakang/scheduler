@@ -564,7 +564,8 @@ def get_schedule(
     order['scheduled'] = False
     
     for i, job in order.iterrows():
-        if job.pwr_rub == 0 or job.pwr_units == 0:
+        if (job.pwr_rub == 0 or job.pwr_units == 0 
+                or pd.isnull(job.pwr_rub) or pd.isnull(job.pwr_units)):
             err_msg = (
                 f'Нулевая мощность: строка {job.rowNo}, '
                 f'спецификация {job.spec}, '
