@@ -1,4 +1,4 @@
-from operator import index
+# from operator import index
 import pandas as pd
 from services import get_engine
 import math
@@ -15,13 +15,11 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # TODO: find target salary values for molder and casters
-# TODO: check error messages in the stdout
-
 rates = {
-    'Модели': 75_000 / 21 / 8,
-    'Формы': 75_000 / 21 / 8,
-    'Отливка': 75_000 / 21 / 8,
-    'Протяжка': 75_000 / 21 / 8
+    'Модели': 80_000 / 21 / 8,
+    'Формы': 80_000 / 21 / 8,
+    'Отливка': 80_000 / 21 / 8,
+    'Протяжка': 80_000 / 21 / 8
 }
 
 query_ind_specs = f'''
@@ -95,6 +93,7 @@ def read_order(order_no):
         WHERE
     --        tech._Description IN ('Отливка', 'Протяжка', 'Отливная тяга резина', 'Отливная тяга пластик', 'Фиброгипс')   -- Технология
             price_types._Description = 'Исполнитель'
+            AND items.[_Description] NOT LIKE '%Паллада%'            
     )
     , rates AS (
         SELECT 
@@ -424,7 +423,7 @@ def fill_power(order, night_shift):
             item = job['item']
             err_msg = (
                 "Ошибка в спецификации индивидуального изделия: более одной строки "
-                f"для производства изделия для {item} в строках "
+                f"для производства изделия для {job.spec}/{item} в строках "
                 f"{', '.join(cast.rowNo.apply(str))} заказа покупателя."
             )
 
@@ -691,7 +690,7 @@ def schedule(
         timestamp = dt.strptime(timestamp, '%d.%m.%Y %H:%M:%S')
     
     print('***read_order***')
-    order = read_order(order_no)
+    order = read_order(order_no) 
     order = fill_power(order, night_shift)
     
     print('***get_schedule***')
