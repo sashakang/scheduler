@@ -524,8 +524,6 @@ def get_schedule(
         'unit_production'
     ])
     
-    schedule = pd.DataFrame(index=order.index)
-    
     custom_specs = order[
         (order.spec.notnull()) & 
         (order.shop.isin(["Модели", "Формы"]))
@@ -562,6 +560,8 @@ def get_schedule(
     
     order['scheduled'] = False
     
+    schedule = pd.DataFrame(index=order.index)
+    
     for i, job in order.iterrows():
         if (job.pwr_rub == 0 or job.pwr_units == 0 
                 or pd.isnull(job.pwr_rub) or pd.isnull(job.pwr_units)):
@@ -575,7 +575,7 @@ def get_schedule(
             continue
         # print(f'{i=}')
         if job.scheduled: 
-            continue      # TODO: excessive?
+            continue      # TODO: excessive? 
         
         hr = 0
         # duplicated
@@ -615,8 +615,16 @@ def get_schedule(
             if hr not in schedule.columns:
                 schedule[hr] = 0.
             
-            hrs_allocated = schedule.loc[(order.shop==shop).values, hr].sum()
-            available_capacity = capacity[shop] - hrs_allocated
+            shop_hrly_capa_allocated = schedule.loc[(order.shop==shop).values, hr].sum()
+            total_hr_capa_allocated = schedule.loc[:, hr].sum()
+            available_capacity = capacity[shop] - shop_hrly_capa_allocated
+
+            if hr == 89 and shop=='Модели':
+                print(
+                    f'{job.rowNo=}, {available_capacity=:.3f}, '
+                    f'{shop_hrly_capa_allocated=:.3f}, {total_hr_capa_allocated=:.3f}'
+                    )
+
             if available_capacity > 0:
                 to_allocate = min(
                     available_capacity, pwr_rub, job.pay - job_allocated)
@@ -624,7 +632,7 @@ def get_schedule(
                 unit_prod = to_allocate / job.rate
                 log.loc[len(log)] = [job.orderNo, job.rowNo, hr, to_allocate, unit_prod]
                 job_allocated += to_allocate
-                hrs_allocated += to_allocate
+                # shop_hrly_capa_allocated += to_allocate
             
             hr += 1       
             if hr > 3200: 
@@ -636,7 +644,7 @@ def get_schedule(
                 err_log.loc[len(err_log), 'err_msg'] = err_msg                
                 break
         
-        print(f'{i=}, {job.rowNo=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
+        # print(f'{i=}, {job.rowNo=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
         order.at[i, 'scheduled'] = True 
         
         if job.pay > job_allocated:

@@ -3,9 +3,12 @@
 1. ~~Удалить отрисовку~~
 2. ~~Chk incomlete scheduling in 22552/1.~~
 3. ~~Fix timeout error in Excel.~~
-4. Generate complete error report at once.
-5. Chk err msgs.
-6. Проверить учет количества форм.
+4. ~~MR capacity cap exceeded~~
+5. custom manufacturing scheduled early, ahead of MFR
+6. MR scheduled late
+7. Generate complete error report at once.
+8. Chk err msgs.
+9. Проверить учет количества форм.
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
