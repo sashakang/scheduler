@@ -4,8 +4,8 @@
 2. ~~Chk incomlete scheduling in 22552/1.~~
 3. ~~Fix timeout error in Excel.~~
 4. ~~MR capacity cap exceeded~~
-5. custom manufacturing scheduled early, ahead of MFR
-6. MR scheduled late
+5. ~~custom manufacturing scheduled early, ahead of MFR~~
+6. ~~MR scheduled late~~
 7. Generate complete error report at once.
 8. Chk err msgs.
 9. Проверить учет количества форм.
