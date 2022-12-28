@@ -537,15 +537,15 @@ def get_schedule(
         
         order['index2'] = order.index
         
-        for spec in custom_specs:
-            rows = order[order.spec==spec].index2
+        for spec_idx in order.spec_idx.unique():
+            rows = order[order.spec_idx==spec_idx].index2
             
             for row in rows:
                 if row == min(rows):
-                    if order.shop.loc[row] not in ["Протяжка", "Отливка"]:
+                    if order.shop.loc[row] not in ["Протяжка", "Отливка", "Фиброгипс"]:
                         print(
                             "Warning: production is not the 1st line in the custom spec:", 
-                            spec
+                            f'row={order.loc[row, "rowNo"]}'
                         )
                     order.at[row, 'index2'] = max(rows)
                 else:
@@ -593,18 +593,18 @@ def get_schedule(
             #     and job.qty > 1
             # ):    
             #     pass
-            if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
-                scheduled_hrs = schedule[(order.spec==job.spec).values].astype(bool).sum()
-                hr = scheduled_hrs[scheduled_hrs > 0].index.max()   # last hour scheduled for the spec
-                hr = (
-                    0 if pd.isnull(hr) 
-                    else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
-                    else hr + 1
-                )
-                hr = math.ceil(hr / 8) * 8      # next jobs within the spec starts next day
-                for ii in range(hr):
-                    if ii not in schedule.columns:
-                        schedule[ii] = 0.
+            # if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
+            scheduled_hrs = schedule[(order.spec==job.spec).values].astype(bool).sum()
+            hr = scheduled_hrs[scheduled_hrs > 0].index.max()   # last hour scheduled for the spec
+            hr = (
+                0 if pd.isnull(hr) 
+                else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
+                else hr + 1
+            )
+            hr = math.ceil(hr / 8) * 8      # next jobs within the spec starts next day
+            for ii in range(hr):
+                if ii not in schedule.columns:
+                    schedule[ii] = 0.
             # else:   # custom item with more than one mold
             #     pass
         
@@ -618,12 +618,6 @@ def get_schedule(
             shop_hrly_capa_allocated = schedule.loc[(order.shop==shop).values, hr].sum()
             total_hr_capa_allocated = schedule.loc[:, hr].sum()
             available_capacity = capacity[shop] - shop_hrly_capa_allocated
-
-            if hr == 89 and shop=='Модели':
-                print(
-                    f'{job.rowNo=}, {available_capacity=:.3f}, '
-                    f'{shop_hrly_capa_allocated=:.3f}, {total_hr_capa_allocated=:.3f}'
-                    )
 
             if available_capacity > 0:
                 to_allocate = min(
@@ -644,7 +638,7 @@ def get_schedule(
                 err_log.loc[len(err_log), 'err_msg'] = err_msg                
                 break
         
-        # print(f'{i=}, {job.rowNo=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
+        print(f'{i=}, {job.rowNo=}, {job.pay=}, {job_allocated=}, diff={job.pay - job_allocated}')
         order.at[i, 'scheduled'] = True 
         
         if job.pay > job_allocated:
@@ -679,15 +673,38 @@ def log2days(log, start):
     return log_days
 
 
+def enumerate_specs(order):
+    order['specId2'] = order.specId.shift()
+    spec_idx = 0
+    spec_idx_list = []
+    for _, row in order.iterrows():
+        if pd.isnull(row.specId):
+            spec_idx_list += [None]
+            continue
+        
+        elif row.specId != row.specId2:
+            spec_idx += 1
+        
+        spec_idx_list += [spec_idx]
+
+    order.drop(columns='specId2', inplace=True)
+    order['spec_idx'] = spec_idx_list
+    order.spec_idx = order.spec_idx.apply(lambda x: int(x) if pd.notnull(x) else None)
+
+    return order
+            
+
+
+
 def schedule(
         order_no: str, 
-        start: str, 
+        start: str ,
         timestamp: str,
-        night_shift,
-        modelers,
-        molders,
-        casters,
-        pullers        
+        night_shift: bool,
+        modelers: int,
+        molders: int,
+        casters: int,
+        pullers: int 
     ):
     
     if start:
@@ -699,6 +716,7 @@ def schedule(
     
     print('***read_order***')
     order = read_order(order_no) 
+    order = enumerate_specs(order)
     order = fill_power(order, night_shift)
     
     print('***get_schedule***')
