@@ -577,37 +577,49 @@ def get_schedule(
         if job.scheduled: 
             continue      # TODO: excessive? 
         
-        hr = 0
+        def get_start_hr(order, custom_specs, schedule, job):
+            hr = 0
+                
+            if job.spec in custom_specs: 
+                # TODO: custom items can be within a spec and also have extra rows without spec
+                # TODO: shall be interrelated via resource constraints
+                # if last mold within spec and multiple molds
+                # if (
+                #     job.specLineNo == order[order.spec==job.spec].specLineNo.max()
+                #     and job.shop == 'Формы' 
+                #     and job.qty > 1
+                # ):    
+                #     pass
+                # if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
+                scheduled_hrs = schedule[(order.spec==job.spec).values].astype(bool).sum()
+                hr = scheduled_hrs[scheduled_hrs > 0].index.max()   # last hour scheduled for the spec
+                hr = (
+                        0 if pd.isnull(hr) 
+                        else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
+                        else hr + 1
+                    )
+                hr = math.ceil(hr / 8) * 8      # next jobs within the spec starts next day
+                for ii in range(hr):
+                    if ii not in schedule.columns:
+                        schedule[ii] = 0.
+                    # else:   # custom item with more than one mold
+                    #     pass
+                
+            # if more than one row for manufacturing of a custom item
+            elif pd.isnull(job.spec) and job['item'].startswith("и"):
+                scheduled_hrs = schedule[
+                        (order.itemId == job.itemId)
+                        & (order.rowNo < job.rowNo)
+                    ].astype(bool).sum()
+                hr = scheduled_hrs[scheduled_hrs > 0].index.max() + 1
+            return hr        
+        
+        hr = get_start_hr(order, custom_specs, schedule, job)
+
         # duplicated
         if hr not in schedule.columns:
             schedule[hr] = 0.
                     
-        if job.spec in custom_specs: 
-            # TODO: custom items can be within a spec and also have extra rows without spec
-            # TODO: shall be interrelated via resource constraints
-            
-            # if last mold within spec and multiple molds
-            # if (
-            #     job.specLineNo == order[order.spec==job.spec].specLineNo.max()
-            #     and job.shop == 'Формы' 
-            #     and job.qty > 1
-            # ):    
-            #     pass
-            # if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
-            scheduled_hrs = schedule[(order.spec==job.spec).values].astype(bool).sum()
-            hr = scheduled_hrs[scheduled_hrs > 0].index.max()   # last hour scheduled for the spec
-            hr = (
-                0 if pd.isnull(hr) 
-                else hr + 9 if job.specLineNo == 1  # +1 workday for final mold check
-                else hr + 1
-            )
-            hr = math.ceil(hr / 8) * 8      # next jobs within the spec starts next day
-            for ii in range(hr):
-                if ii not in schedule.columns:
-                    schedule[ii] = 0.
-            # else:   # custom item with more than one mold
-            #     pass
-        
         job_allocated = 0
         pwr_rub = rates['Протяжка'] if job.shop == 'Протяжка' else job.pwr_rub
         shop = job.shop
