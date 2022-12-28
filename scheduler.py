@@ -706,8 +706,6 @@ def enumerate_specs(order):
     return order
             
 
-
-
 def schedule(
         order_no: str, 
         start: str ,
