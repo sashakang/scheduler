@@ -794,7 +794,3 @@ def schedule(
         
     print(f'{engine_unf=}')
     
-    
-if __name__ == '__main__':
-    schedule()
-    
