@@ -2,7 +2,6 @@ from sqlalchemy import create_engine, engine
 import urllib.parse
 
 
-# TODO: remove `db` from function call, it shall be defined in the file
 def get_engine(
     fname: str
 ) -> engine.base.Engine:
@@ -38,6 +37,7 @@ def get_engine(
 
 
 if __name__ == '__main__':
-    eng = get_engine(fname='./.server', db='prod_unf')
+    eng = get_engine(fname='./.server')
     print(type(eng))
     print(eng)
+    
