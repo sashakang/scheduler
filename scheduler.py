@@ -208,7 +208,7 @@ def read_order(order_no):
             NOT IN ('Упаковка', 'Доставка', 'Монтажный шаблон', 'Барельефы')
         AND items.[_Description] NOT LIKE ('%отрисовка%')        
         AND IIF(cat._Description IS NULL, subcat._Description, cat._Description) 
-            NOT IN ('Скульптуры')    -- cat
+            NOT IN ('Скульптуры', 'Барельефы')    -- cat
     ORDER BY tables._LineNo3639  -- номер строки
     '''
 
@@ -288,10 +288,11 @@ def fill_power(order, night_shift):
     '''
 
     mold_serials = pd.read_sql(query_specs, engine_unf)
-    mold_serials['pwr'] = mold_serials.apply(lambda r:
-                                             r.n_casts if r.unit != 'п.м.'
-                                             else r.n_casts * r.cast_len / 1000, axis=1
-                                             )
+    mold_serials['pwr'] = mold_serials.apply(
+        lambda r:
+        r.n_casts if r.unit != 'п.м.'
+        else r.n_casts * r.cast_len / 1000, axis=1
+    )
     mold_pwr = mold_serials.groupby(['АртикулПродукта']).agg(sum).pwr
 
     query_mfr_params = '''
@@ -303,7 +304,7 @@ def fill_power(order, night_shift):
     def get_item_pwr(job):
         try:
             if job.itemId == 200167:    # ФР Изготовление одиночной формы
-                # always shall take 1 working day
+                # always takes 1 working day
                 return max(0.125, rates[job.shop] / job.rate)
 
             elif job.shop == 'Модели':
@@ -312,7 +313,7 @@ def fill_power(order, night_shift):
                                       job.itemId].std_model_days.values[0]
                 days = std_days if volume <= 0.06 else std_days * (1 + volume)
                 pwr = job.qty / days / 8
-                pwr = min(pwr, rates[job.shop]/job.rate)
+                pwr = min(pwr, rates[job.shop]/job.rate * job.qty)
                 return pwr
 
             elif job.shop == 'Формы':
@@ -335,6 +336,8 @@ def fill_power(order, night_shift):
                     ].std_mold_days_no_punch.values[0]
 
                 days = std_days if volume <= 0.06 else std_days * (1 + volume)
+                
+                # make subsequent molds by copying the 1st one
                 if job.qty > 1:
                     days = math.ceil(days + job.qty * 1.5)
                 pwr = job.qty / days / 8
@@ -545,6 +548,9 @@ def get_schedule(
     Custom specifications are sorted by spec row number and item production row is moved to the end.
     The jobs withen the specifications scheduled sequentially finish-to-start.
     Th subsequent job starts the next day after the previous one finishes, not the next hour.
+
+    Returns:
+        schedule (pd.DataFrame): 
     '''
 
     capacity = {
@@ -568,9 +574,7 @@ def get_schedule(
     ].spec.unique()
 
     def rearrange_customs():
-        '''
-        Makes product the last row within custom spec.
-        '''
+        ''' Moves product row to the last position within custom spec '''
         # TODO: add check for specs shall have consequantial row numbers
 
         order['index2'] = order.index
