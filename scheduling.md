@@ -9,6 +9,7 @@
 7. Generate complete error report at once.
 8. Chk err msgs.
 9. Проверить учет количества форм.
+10. A MFR job shall accelerated when more capacity becomes available.
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
@@ -66,3 +67,21 @@ On Windows:
 # Attach terminal to a running container
 
 `docker exec -it [container ID] bash`
+
+# Debug
+
+To switch between the databases change `база` field in Excel and edit `db` field 
+in `.prod_unf` file.
+
+# Algo
+
+## Multiple molds
+
+Multiple molds used to shorten production timeline or if production size exceeds mold life expectancy.
+
+Possible combinations:
+1. Multiple molds, no model multiplications. Manufacture a separate model for each mold.
+2. Multiple molds with model multiplication. Do model multiplication for each mold.  
+   Modelling itself is single.
+   If there are multiple molds with single model and no model multiplication or  
+   quantity of model multiplication is not equal to number of molds then raise error.
