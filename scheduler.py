@@ -657,11 +657,12 @@ def get_schedule(
                     & (order.rowNo < job.rowNo)
                 ].astype(bool).sum()
                 hr = scheduled_hrs[scheduled_hrs > 0].index.max() + 1
+                if pd.isnull(hr): hr = 0
             return hr
 
         hr = get_start_hr(order, custom_specs, schedule, job)
 
-        # duplicated
+        # duplicated 
         if hr not in schedule.columns:
             schedule[hr] = 0.
 
@@ -669,7 +670,7 @@ def get_schedule(
         pwr_rub = rates['Протяжка'] if job.shop == 'Протяжка' else job.pwr_rub
         shop = job.shop
         while job_allocated < job.pay:
-            if hr not in schedule.columns:
+            if hr not in schedule.columns or pd.isnull(hr):
                 schedule[hr] = 0.
 
             shop_hrly_capa_allocated = schedule.loc[(
