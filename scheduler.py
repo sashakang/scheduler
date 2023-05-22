@@ -1,4 +1,3 @@
-# from operator import index
 import warnings
 import math
 import sys
@@ -265,7 +264,7 @@ def fill_power(order, night_shift):
             , items._Description AS Оснастка
             , categories._Description AS toolGroup
             , CAST(items._Fld1527 AS int) AS АртикулОснастки
-        --    , serial._Description AS serialNo
+            , serial._Description AS serialNo
             , serial._Fld16389 AS n_casts
             , serial._Fld16388 AS cast_len
         FROM _Reference122 AS specs
@@ -281,6 +280,8 @@ def fill_power(order, night_shift):
         WHERE 
             CAST(specs._Marked AS int) = 0    -- пометка удаления
             AND CAST(specs._Fld35181 AS int) = 0  -- недействителен
+            AND CAST(serial._Fld16386 AS int) = 0    --  serial не списан
+            AND CAST(serial._Marked AS int) = 0     -- не помеченНаУдаление
             AND tech._Description IN ('Отливка', 'Отливная тяга резина', 'Отливная тяга пластик', 'Фиброгипс')
             AND categories._Description NOT IN ('Модель', 'Шаблоны', 'Сырье и материалы для производства', 'Под изгиб')   -- toolGroup
             AND specs._Description NOT LIKE '%ФИ'

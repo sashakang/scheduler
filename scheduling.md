@@ -19,7 +19,7 @@
 
 `--reload` switch for development only
 
-# Setup
+# VSCode Setup
 `launch.json` for VSCode to debug and run FastAPI/Uvicorn app.
 ```
 {
@@ -52,7 +52,9 @@ From `code` folder run
 # Run container
 
 Locally  
-`docker run -itv scheduling-vol:/credentials --rm -p 8000:8000 sashakang/scheduler`
+`docker run -itv scheduling-vol:/credentials --rm -p 8000:8000 --name scheduler sashakang/scheduler`
+
+`--name scheduler` option needed to schedule container restart in crontab on Ubuntu.
 
 # Create volume
 
@@ -85,3 +87,14 @@ Possible combinations:
    Modelling itself is single.
    If there are multiple molds with single model and no model multiplication or  
    quantity of model multiplication is not equal to number of molds then raise error.
+
+# Crontab
+
+In Ubuntu terminal  
+1. Switch to `root` user: `sudo su`.
+2. ~~Edit by `nano crontab`.~~ This does not work, opens another instance of crontab.
+3. `cd \etc` and use `crontab -e` instead. It opens vim.
+
+# SSH
+
+172.24.1.210
