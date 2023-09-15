@@ -419,8 +419,10 @@ def fill_power(order, night_shift):
 
                     elif ind_spec.n_casts > 0:
                         # if no spec in the order than assume 1 mold is available
+                        n_molds = order[order.itemId==ind_spec.артикулКомпонент].qty.values[0]
                         pwr = (
-                            ind_spec.n_casts
+                            n_molds
+                            * ind_spec.n_casts
                             * k_night
                             * casts_per_hr
                         )
