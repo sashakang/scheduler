@@ -1,4 +1,3 @@
-# from operator import index
 import warnings
 import math
 import sys
@@ -265,7 +264,7 @@ def fill_power(order, night_shift):
             , items._Description AS Оснастка
             , categories._Description AS toolGroup
             , CAST(items._Fld1527 AS int) AS АртикулОснастки
-        --    , serial._Description AS serialNo
+            , serial._Description AS serialNo
             , serial._Fld16389 AS n_casts
             , serial._Fld16388 AS cast_len
         FROM _Reference122 AS specs
@@ -281,6 +280,8 @@ def fill_power(order, night_shift):
         WHERE 
             CAST(specs._Marked AS int) = 0    -- пометка удаления
             AND CAST(specs._Fld35181 AS int) = 0  -- недействителен
+            AND CAST(serial._Fld16386 AS int) = 0    --  serial не списан
+            AND CAST(serial._Marked AS int) = 0     -- не помеченНаУдаление
             AND tech._Description IN ('Отливка', 'Отливная тяга резина', 'Отливная тяга пластик', 'Фиброгипс')
             AND categories._Description NOT IN ('Модель', 'Шаблоны', 'Сырье и материалы для производства', 'Под изгиб')   -- toolGroup
             AND specs._Description NOT LIKE '%ФИ'
@@ -341,7 +342,7 @@ def fill_power(order, night_shift):
                 if job.qty > 1:
                     days = math.ceil(days + job.qty * 1.5)
                 pwr = job.qty / days / 8
-                pwr = min(pwr, rates[job.shop] / job.rate)
+                pwr = min(pwr, rates[job.shop] / job.rate * job.qty)
                 return pwr
 
             elif job.shop == 'Протяжка':
@@ -398,14 +399,6 @@ def fill_power(order, night_shift):
                         subset = subset[subset.specLineNo ==
                                         (subset.specLineNo.max())]
                         subset = subset.iloc[0]
-                        if subset.n_casts == 0:
-                            subset = order[
-                                (order.specId == job.specId) &
-                                (order.shop == 'Формы')
-                            ]
-                            subset[subset.specLineNo == (
-                                subset.specLineNo.max()-1)]
-                            subset = subset.iloc[0]
 
                         if subset.n_casts == 0:
                             err_msg = (f'Количество отливок в форме {job["item"]} '
@@ -444,7 +437,10 @@ def fill_power(order, night_shift):
                     except IndexError:
                         print(f'No mold power data for {job.item}.')
                     return pwr_units * k_night
-        except Exception:
+        except Exception as e:
+            # Handle the exception
+            print(f"An error occurred: {type(e).__name__}")
+            print(f"Error message: {str(e)}")
             err_msg = (
                 f"Не удалось рассчитать мощность формы {job.spec}/{job['item']} в строке "
                 f"{job.rowNo} заказа."
@@ -456,7 +452,7 @@ def fill_power(order, night_shift):
     def get_vol_from_spec(job):
         cast = order[
             (order.spec == job.spec) &
-            (order.shop == 'Отливка')
+            (order.shop == 'Отливка')   #TODO: should be ["Отливка", "Отливные тяги", "СФГ"]?
         ]
         if len(cast) > 1:
             item = job['item']
@@ -552,6 +548,8 @@ def get_schedule(
     Returns:
         schedule (pd.DataFrame): 
     '''
+    
+    #TODO: cast muptiple molds as soon as they are available. Do not wait until all molds are ready.
 
     capacity = {
         'Модели': n_modelers * rates['Модели'],
@@ -602,7 +600,7 @@ def get_schedule(
 
     order['scheduled'] = False
 
-    schedule = pd.DataFrame(index=order.index)
+    schedule_df = pd.DataFrame(index=order.index)
 
     for i, job in order.iterrows():
         if (job.pwr_rub == 0 or job.pwr_units == 0
@@ -619,7 +617,7 @@ def get_schedule(
         if job.scheduled:
             continue      # TODO: excessive?
 
-        def get_start_hr(order, custom_specs, schedule, job):
+        def get_start_hr(order, custom_specs, schedule_, job):
             hr = 0
 
             if job.spec in custom_specs:
@@ -633,7 +631,7 @@ def get_schedule(
                 # ):
                 #     pass
                 # if job.shop not in ['Отливка', 'Фиброгипс'] or job.qty > 1:
-                scheduled_hrs = schedule[(
+                scheduled_hrs = schedule_[(
                     order.spec == job.spec).values].astype(bool).sum()
                 # last hour scheduled for the spec
                 hr = scheduled_hrs[scheduled_hrs > 0].index.max()
@@ -645,14 +643,14 @@ def get_schedule(
                 # next jobs within the spec starts next day
                 hr = math.ceil(hr / 8) * 8
                 for ii in range(hr):
-                    if ii not in schedule.columns:
-                        schedule[ii] = 0.
+                    if ii not in schedule_.columns:
+                        schedule_[ii] = 0.
                     # else:   # custom item with more than one mold
                     #     pass
 
             # if more than one row for manufacturing of a custom item
             elif pd.isnull(job.spec) and job['item'].startswith("и"):
-                scheduled_hrs = schedule[
+                scheduled_hrs = schedule_[
                     (order.itemId == job.itemId)
                     & (order.rowNo < job.rowNo)
                 ].astype(bool).sum()
@@ -660,20 +658,20 @@ def get_schedule(
                 if pd.isnull(hr): hr = 0
             return hr
 
-        hr = get_start_hr(order, custom_specs, schedule, job)
+        hr = get_start_hr(order, custom_specs, schedule_df, job)
 
         # duplicated 
-        if hr not in schedule.columns:
-            schedule[hr] = 0.
+        if hr not in schedule_df.columns:
+            schedule_df[hr] = 0.
 
         job_allocated = 0
         pwr_rub = rates['Протяжка'] if job.shop == 'Протяжка' else job.pwr_rub
         shop = job.shop
         while job_allocated < job.pay:
-            if hr not in schedule.columns or pd.isnull(hr):
-                schedule[hr] = 0.
+            if hr not in schedule_df.columns or pd.isnull(hr):
+                schedule_df[hr] = 0.
 
-            shop_hrly_capa_allocated = schedule.loc[(
+            shop_hrly_capa_allocated = schedule_df.loc[(
                 order.shop == shop).values, hr].sum()
             # total_hr_capa_allocated = schedule.loc[:, hr].sum()
             available_capacity = capacity[shop] - shop_hrly_capa_allocated
@@ -681,7 +679,7 @@ def get_schedule(
             if available_capacity > 0:
                 to_allocate = min(
                     available_capacity, pwr_rub, job.pay - job_allocated)
-                schedule.at[i, hr] = to_allocate
+                schedule_df.at[i, hr] = to_allocate
                 unit_prod = to_allocate / job.rate
                 log.loc[len(log)] = [job.orderNo, job.rowNo,
                                      hr, to_allocate, unit_prod]
@@ -713,7 +711,7 @@ def get_schedule(
 
     log['timestamp'] = timestamp
 
-    return schedule, log
+    return schedule_df, log
 
 
 def log2days(log, start):
@@ -779,7 +777,7 @@ def schedule(
     order = fill_power(order, night_shift)
 
     print('***get_schedule***')
-    schedule, log = get_schedule(
+    schedule_tbl, log = get_schedule(
         order,
         timestamp,
         night_shift,
@@ -821,7 +819,7 @@ def schedule(
 
     print(f'{order.shape=}')
     print(order.iloc[:5, :6])
-    print(f'{schedule.shape=}')
+    print(f'{schedule_tbl.shape=}')
     print(log.head())
 
     err_log['timestamp'] = timestamp
