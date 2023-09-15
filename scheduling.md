@@ -10,6 +10,9 @@
 8. Chk err msgs.
 9. Проверить учет количества форм.
 10. A MFR job shall accelerated when more capacity becomes available.
+11. Если рабочих форм индивидуального изделия несколько, то при отливке вне состава спецификации 
+    использовать все (сейчас используется только одна форма).
+12. Может быть сделать симуляцию на независимых агентах? Т.е. реальную симуляцию.
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
@@ -55,6 +58,11 @@ Locally
 `docker run -itv scheduling-vol:/credentials --rm -p 8000:8000 --name scheduler sashakang/scheduler`
 
 `--name scheduler` option needed to schedule container restart in crontab on Ubuntu.
+
+Alternatively  
+`docker run -itv scheduling-vol:/credentials --restart=always -p 8000:8000 --name scheduler sashakang/scheduler`  
+to restart container after restarting Docker service.  
+This may work better with `docker restart scheduler` cron command.
 
 # Create volume
 
