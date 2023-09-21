@@ -233,6 +233,8 @@ def read_order(order_no):
         print(order[order.shop == 'Прочие'][['rowNo', 'item']])
 
     order = order[order.shop != 'Прочие']
+    
+    order.specId = [int(x) if pd.notna(x) else None for x in order.specId]
 
     return order
 
@@ -384,7 +386,7 @@ def fill_power(order, night_shift):
                     # get number of individual molds
                     # works only for the specs in the same order
                     # otherwise it gets too complicated, in this case `n_molds` = 1
-                    if job.specId:
+                    if pd.notnull(job.specId):
                         subset = order[
                             (order.specId == job.specId) &
                             (order.shop == 'Формы')
@@ -419,7 +421,11 @@ def fill_power(order, night_shift):
 
                     elif ind_spec.n_casts > 0:
                         # if no spec in the order than assume 1 mold is available
-                        n_molds = order[order.itemId==ind_spec.артикулКомпонент].qty.values[0]
+                        # assumes there are only single MR rows for each custom product
+                        n_molds = order[
+                            (order.itemId==ind_spec.артикулКомпонент)
+                            & (order.specId==ind_spec.specId)
+                        ].qty.values[0]
                         pwr = (
                             n_molds
                             * ind_spec.n_casts
@@ -661,10 +667,10 @@ def get_schedule(
             return hr
 
         hr = get_start_hr(order, custom_specs, schedule_df, job)
-
-        # duplicated 
-        if hr not in schedule_df.columns:
-            schedule_df[hr] = 0.
+        
+        # TODO: duplicated 
+        # if hr not in schedule_df.columns:
+        #     schedule_df[hr] = 0.
 
         job_allocated = 0
         pwr_rub = rates['Протяжка'] if job.shop == 'Протяжка' else job.pwr_rub
