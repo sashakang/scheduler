@@ -1,9 +1,6 @@
 from sqlalchemy import create_engine, engine
 import urllib.parse
 
-
-VERSION = '0.9.1'
-
 def get_engine(
     fname: str
 ) -> engine.base.Engine:
@@ -35,7 +32,6 @@ def get_engine(
         )
 
     print(f'Connected to {login}@{db}.')
-    print(f'Server version {VERSION}')
     return engine
 
 

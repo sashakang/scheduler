@@ -14,6 +14,7 @@ from scheduler import schedule
 
 app = FastAPI(debug=True)
 
+VERSION = '0.9.1'
 
 @app.get("/")
 async def root():
@@ -39,6 +40,7 @@ def schedule_production(
 
     order_no = order_no.replace('-', '/') 
     print(f'Calling {order_no=}, {start=}, {ts=}')
+    print(f'Server version {VERSION}')
     schedule(
         order_no,
         start,

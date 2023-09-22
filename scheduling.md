@@ -79,6 +79,8 @@ On Windows:
 
 # Attach terminal to a running container
 
+`docker logs -f scheduler`
+
 `docker exec -it [container ID] bash`
 
 
