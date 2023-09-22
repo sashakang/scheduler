@@ -9,10 +9,13 @@
 7. Generate complete error report at once.
 8. Chk err msgs.
 9. Проверить учет количества форм.
-10. A MFR job shall accelerated when more capacity becomes available.
-11. Если рабочих форм индивидуального изделия несколько, то при отливке вне состава  
-    спецификации использовать все (сейчас используется только одна форма).
+10. ~~A MFR job shall accelerat when more capacity becomes available.~~
+11. ~~Если рабочих форм индивидуального изделия несколько, то при отливке вне состава  ~~
+    ~~спецификации использовать все (сейчас используется только одна форма).~~
 13. Может быть сделать симуляцию на независимых агентах? Т.е. реальную симуляцию.
+14. For multiple molds reproduce actual job sequence, i.e. single model ->  
+    single mold -> multiplied model -> multiplied mold -> multiple models -> multiple molds.  
+    Is it worth it?
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
@@ -77,6 +80,13 @@ On Windows:
 # Attach terminal to a running container
 
 `docker exec -it [container ID] bash`
+
+
+# Push
+`docker push sashakang/scheduler`
+
+# Pull
+`docker pull sashakang/scheduler`
 
 # Debug
 
