@@ -118,3 +118,8 @@ In Ubuntu terminal
 # SSH
 
 172.24.1.210
+
+# Excel
+Make sure its v.2019 or later.
+
+Check permissions in Power Query editor. Choose "ignore".

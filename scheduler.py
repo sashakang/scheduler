@@ -60,8 +60,6 @@ WHERE
 
 ind_specs = pd.read_sql(query_ind_specs, engine_unf)
 
-err_log = pd.DataFrame(columns=['err_msg'])
-
 
 def read_order(order_no):
     ''' Read customer order from 1C 
@@ -772,6 +770,8 @@ def schedule(
     pullers: int
 ):
 
+    err_log = pd.DataFrame(columns=['err_msg'])
+
     if start:
         start = dt.strptime(start, '%d.%m.%Y')
         start = start.strftime('%Y%m%d')
@@ -779,11 +779,11 @@ def schedule(
     if timestamp:
         timestamp = dt.strptime(timestamp, '%d.%m.%Y %H:%M:%S')
 
+
     print('***read_order***')
     order = read_order(order_no)
     order = enumerate_specs(order)
     order = fill_power(order, night_shift)
-
     print('***get_schedule***')
     schedule_tbl, log = get_schedule(
         order,
@@ -795,6 +795,25 @@ def schedule(
         pullers
     )
 
+    print('***outputting***')
+
+    err_log['timestamp'] = timestamp
+    print('-'*20)
+    print(f"ERR LOG, {len(err_log)} records.")
+    if len(err_log) > 0:
+        print(err_log)
+        print('-'*20)
+    err_log.to_sql(
+        name='scheduling_err_log',
+        con=engine_analytics,
+        if_exists='replace',
+        index=False,
+        dtype={
+            'timestamp': sqlalchemy.DateTime,
+            'err_msg': sqlalchemy.Text
+        }
+    )
+    
     log_days = log2days(log, start)
     log_days.to_sql(
         name='order_daily_log',
@@ -808,8 +827,6 @@ def schedule(
             'day': sqlalchemy.Integer
         }
     )
-
-    print('***outputting***')
 
     log.to_sql(
         name='order_prod_sched',
@@ -829,22 +846,5 @@ def schedule(
     print(order.iloc[:5, :6])
     print(f'{schedule_tbl.shape=}')
     print(log.head())
-
-    err_log['timestamp'] = timestamp
-    print('-'*20)
-    print(f"ERR LOG, {len(err_log)} records.")
-    if len(err_log) > 0:
-        print(err_log)
-        print('-'*20)
-    err_log.to_sql(
-        name='scheduling_err_log',
-        con=engine_analytics,
-        if_exists='replace',
-        index=False,
-        dtype={
-            'timestamp': sqlalchemy.DateTime,
-            'err_msg': sqlalchemy.Text
-        }
-    )
 
     print(f'{engine_unf=}')
