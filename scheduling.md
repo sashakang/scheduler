@@ -16,6 +16,7 @@
 14. For multiple molds reproduce actual job sequence, i.e. single model ->  
     single mold -> multiplied model -> multiplied mold -> multiple models -> multiple molds.  
     Is it worth it?
+15. Add logging. Store it on SQL Server.
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.

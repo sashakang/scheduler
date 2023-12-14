@@ -13,6 +13,8 @@ engine_analytics = get_engine(fname='../credentials/.server_analytics')
 
 warnings.filterwarnings("ignore")
 
+err_log = pd.DataFrame(columns=['err_msg'])
+
 # TODO: find target salary values for molder and casters
 rates = {
     'Модели': 80_000 / 21 / 8,
@@ -68,7 +70,7 @@ def read_order(order_no):
         pd.DataFrame: order rows.
     '''
 
-    # TODO: remove busts
+    # TODO: remove busts 
 
     query_order = f'''
     -- order scheduling data
@@ -163,7 +165,7 @@ def read_order(order_no):
         , IIF(cat._Description IS NULL, NULL, subcat._Description) AS subcat
         , CAST(items._Fld1527 AS int) AS itemId
         , items._Description AS item
-        , cat._Description AS category
+--        , cat._Description AS category
         , units._Description AS unit
         , CAST(items._Fld16170 AS int) AS Высота
         , CAST(items._Fld16171 AS int) AS Ширина
@@ -191,8 +193,9 @@ def read_order(order_no):
         LEFT JOIN _Reference16144 AS complex_specs ON tables._Fld16182RRef = complex_specs._IDRRef
         LEFT JOIN rates ON rates.Артикул = CAST(items._Fld1527 AS int)    -- Артикул
         LEFT JOIN specs ON specs.specId = complex_specs.[_Code] AND specs.артикулКомпонент = CAST(items._Fld1527 AS int)
+        LEFT JOIN _Reference118 AS statuses ON statuses._IDRRef = orders._Fld3615RRef
     WHERE 
-        numbers._Fld16427 LIKE '{order_no}' 
+        numbers._Fld16427 = '{order_no}' 
     --    CAST(orders._Posted AS int) = 1
     --    AND items._Description IS NOT NULL
         AND CAST(items._Fld1527 AS int) NOT IN (
@@ -206,6 +209,7 @@ def read_order(order_no):
         AND items.[_Description] NOT LIKE ('%отрисовка%')        
         AND IIF(cat._Description IS NULL, subcat._Description, cat._Description) 
             NOT IN ('Скульптуры', 'Барельефы')    -- cat
+        AND statuses._Description <> 'Отменен'   -- СостояниеЗаказа
     ORDER BY tables._LineNo3639  -- номер строки
     '''
 
@@ -213,6 +217,12 @@ def read_order(order_no):
 
     if len(order) == 0:
         raise ValueError('Получен пустой заказ')
+    
+    if len(order[order.specLineNo.isnull()]) > 1:
+        err_rows = order[order.specLineNo.isnull()]
+        err_spec = err_rows.spec.values[0]
+        err_row = err_rows.rowNo.values[0]
+        raise ValueError(f'Спецификация {err_spec} в строке {err_row} устарела')
 
     shops = {
         "Протяжка": "Протяжка",
@@ -347,7 +357,7 @@ def fill_power(order, night_shift):
 
             elif job.shop == 'Протяжка':
                 semiperimeter = job.Глубина + (
-                    job.Ширина if job.category in [
+                    job.Ширина if job.cat in [     
                         "Полуколонны: ствол гладкий",
                         "Пилястры: ствол гладкий"
                     ]
@@ -769,8 +779,6 @@ def schedule(
     casters: int,
     pullers: int
 ):
-
-    err_log = pd.DataFrame(columns=['err_msg'])
 
     if start:
         start = dt.strptime(start, '%d.%m.%Y')
