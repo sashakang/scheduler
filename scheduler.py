@@ -218,10 +218,13 @@ def read_order(order_no):
     if len(order) == 0:
         raise ValueError('Получен пустой заказ')
     
-    if len(order[order.specLineNo.isnull()]) > 1:
-        err_rows = order[order.specLineNo.isnull()]
-        err_spec = err_rows.spec.values[0]
-        err_row = err_rows.rowNo.values[0]
+    spec_errs = order[
+        (order.specLineNo.isnull())
+        & (order.specId.notnull())
+    ]
+    if len(spec_errs) > 0:
+        err_spec = spec_errs.spec.values[0]
+        err_row = spec_errs.rowNo.values[0]
         raise ValueError(f'Спецификация {err_spec} в строке {err_row} устарела')
 
     shops = {
@@ -357,7 +360,7 @@ def fill_power(order, night_shift):
 
             elif job.shop == 'Протяжка':
                 semiperimeter = job.Глубина + (
-                    job.Ширина if job.cat in [     
+                    job.Ширина if job['cat'] in [     
                         "Полуколонны: ствол гладкий",
                         "Пилястры: ствол гладкий"
                     ]
