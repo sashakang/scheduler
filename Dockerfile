@@ -19,15 +19,15 @@ RUN ACCEPT_EULA=Y apt-get -y --no-install-recommends install msodbcsql17
 RUN mkdir /code
 WORKDIR /code
 
-# Create and activate virtual environment
+# # Create and activate virtual environment
 RUN python -m venv /workspaces/code/.venv
 ENV PATH="/workspaces/code/.venv/bin:$PATH"
 
-# Install dependencies from requirements.txt
+# # Install dependencies from requirements.txt
 COPY ./requirements.txt /workspaces/code/requirements.txt
 RUN pip install --no-cache-dir -r /workspaces/code/requirements.txt
 
-# Copy the rest of your code
+# # Copy the rest of your code
 COPY . /workspaces/code/
 
 # COPY ./requirements.txt /code
