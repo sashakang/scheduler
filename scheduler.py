@@ -8,8 +8,8 @@ from services import get_engine
 
 sys.tracebacklimit = 0
 
-engine_unf = get_engine(fname='../credentials/.prod_unf')
-engine_analytics = get_engine(fname='../credentials/.server_analytics')
+engine_unf = get_engine(fname='../.credentials/.prod_unf')
+engine_analytics = get_engine(fname='../.credentials/.server_analytics')
 
 warnings.filterwarnings("ignore")
 
