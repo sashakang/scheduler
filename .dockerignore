@@ -1,0 +1,42 @@
+# Exclude .credentials directory
+../.credentials
+
+# Additionally, exclude other common files and directories 
+# that are not needed in the Docker image
+
+# Version control directories
+.git
+.gitignore
+
+# VSCode folders
+.vscode
+.code
+
+# Devcontainer configuration
+.devcontainer
+
+# Node.js modules
+node_modules
+
+# Python bytecode
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyd
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# User files
+*.ipynb
+*.xls
+*.xlsx
+*.xlsb
+*.xlsm

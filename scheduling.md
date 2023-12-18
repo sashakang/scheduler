@@ -59,12 +59,12 @@ From `code` folder run
 # Run container
 
 Locally  
-`docker run -itv scheduling-vol:/credentials --rm -p 8000:8000 --name scheduler sashakang/scheduler`
+`docker run -itv scheduling-vol:/.credentials --rm -p 8000:8000 --name scheduler sashakang/scheduler`
 
 `--name scheduler` option needed to schedule container restart in crontab on Ubuntu.
 
 Alternatively  
-`docker run -itv scheduling-vol:/credentials --restart=always -p 8000:8000 --name scheduler sashakang/scheduler`  
+`docker run -itv scheduling-vol:/.credentials --restart=always -p 8000:8000 --name scheduler sashakang/scheduler`  
 to restart container after restarting Docker service.  
 This may work better with `docker restart scheduler` cron command.
 
