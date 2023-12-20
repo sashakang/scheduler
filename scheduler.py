@@ -15,6 +15,12 @@ warnings.filterwarnings("ignore")
 
 err_log = pd.DataFrame(columns=['err_msg'])
 
+# not fully used since daily production calculated from pay, not casts
+CASTS_PER_HR_GYPS = 1.25
+CASTS_PER_HR_SFG_50_MM_OR_LESS_NO_PUNCH = 1
+CASTS_PER_HR_SFG_OVER_50_MM_NO_PUNCH = 0.88
+CASTS_PER_HR_SFG_OVER_50_MM_WITH_PUNCH = 0.75
+
 # TODO: find target salary values for molder and casters
 rates = {
     'Модели': 80_000 / 21 / 8,
@@ -377,7 +383,11 @@ def fill_power(order, night_shift):
 
             else:
                 k_night = 2 if night_shift else 1
-                casts_per_hr = 0.67 if job.tech == 'Фиброгипс' else 1.25
+                casts_per_hr = (
+                    CASTS_PER_HR_GYPS if job.tech == 'Гипс Г-16' 
+                    else CASTS_PER_HR_SFG_50_MM_OR_LESS_NO_PUNCH if job.Глубина <= 50
+                    else CASTS_PER_HR_SFG_OVER_50_MM_NO_PUNCH
+                )
 
                 if job['item'].startswith('и'):
                     # get custom spec even if it is not in the same order

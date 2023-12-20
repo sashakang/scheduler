@@ -17,6 +17,9 @@
     single mold -> multiplied model -> multiplied mold -> multiple models -> multiple molds.  
     Is it worth it?
 15. Add logging. Store it on SQL Server.
+16. Dev Container is not accessible via external IP.
+17. Dev Container contains both '/code' and '/workspaces/code' folders. Remove duplicates? 
+    Or is it not important?
 
 # Consider 
 2. use single pool of shop resources, not a number of separate individual resources, i.e. 3 caster as a single 3x power resource.
