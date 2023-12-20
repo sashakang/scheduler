@@ -1,5 +1,5 @@
 # Exclude .credentials directory
-../.credentials
+# ../.credentials
 
 # Additionally, exclude other common files and directories 
 # that are not needed in the Docker image
