@@ -10,7 +10,7 @@
 	"dockerFile": "../Dockerfile",
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	// "forwardPorts": [],
+	"forwardPorts": [8000],
 
 	// Uncomment the next line to run commands after the container is created - for example installing curl.
 	// "postCreateCommand": "apt-get update && apt-get install -y curl",
@@ -20,10 +20,10 @@
 
 	// Uncomment to use the Docker CLI from inside the container. See https://aka.ms/vscode-remote/samples/docker-from-docker.
 	// "mounts": [ "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind" ],
-	// "mounts": [ "source=${localWorkspaceFolder}/../.credentials,target=/workspace/code/../.credentials,type=bind" ],
-    "mounts": [
-        "source=${localWorkspaceFolder}/../.credentials,target=/container-credentials,type=bind"
-    ],
+	"mounts": [ "source=${localWorkspaceFolder}/../.credentials,target=/workspaces/code/../.credentials,type=bind" ],
+    // "mounts": [
+    //     "source=${localWorkspaceFolder}/../.credentials,target=/container-credentials,type=bind"
+    // ],
 
 	// Uncomment to connect as a non-root user if you've added one. See https://aka.ms/vscode-remote/containers/non-root.
 	// "remoteUser": "vscode"

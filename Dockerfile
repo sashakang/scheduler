@@ -19,27 +19,11 @@ RUN ACCEPT_EULA=Y apt-get -y --no-install-recommends install msodbcsql17
 RUN mkdir /code
 WORKDIR /code
 
-# # Create and activate virtual environment
-RUN python -m venv /workspaces/code/.venv
-ENV PATH="/workspaces/code/.venv/bin:$PATH"
-
-# # Install dependencies from requirements.txt
-COPY ./requirements.txt /workspaces/code/requirements.txt
-RUN pip install --no-cache-dir -r /workspaces/code/requirements.txt
-
-# # Copy the rest of your code
-COPY . /workspaces/code/
-
-# COPY ./requirements.txt /code
-# RUN python -m pip install -U pip
-# RUN python -m pip install -r requirements.txt 
+COPY ./requirements.txt /code
+RUN python -m pip install -U pip
+RUN pip install -r requirements.txt 
 
 COPY . /code/
-
-# After setting up your workspace create a symbolic link to the credentials folder
-# Other options did not work
-RUN ln -s /container-credentials /workspaces/code/../.credentials
-
 # what does this line do? Is it really necessary?
 # COPY . .    
 
