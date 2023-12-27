@@ -410,7 +410,8 @@ def fill_power(order, night_shift):
                     if pd.notnull(job.specId):
                         subset = order[
                             (order.specId == job.specId) &
-                            (order.shop == 'Формы')
+                            (order.shop == 'Формы') &
+                            (order.itemId != 200181)     # не пуансон
                         ]
                         if subset.empty:
                             err_log.loc[len(err_log), 'err_msg'] = {
