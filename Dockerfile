@@ -20,12 +20,9 @@ RUN mkdir /code
 WORKDIR /code
 
 COPY ./requirements.txt /code
-RUN python -m pip install -U pip
-RUN pip install -r requirements.txt 
+RUN python -m pip install -U pip && pip install -r requirements.txt 
 
 COPY . /code/
-# what does this line do? Is it really necessary?
-# COPY . .    
 
 ENTRYPOINT [  ]
 CMD ["uvicorn", "scheduling_server:app", "--host", "0.0.0.0", "--port", "8000"]
