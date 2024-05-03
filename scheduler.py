@@ -302,9 +302,9 @@ def fill_power(order, night_shift):
             AND CAST(serial._Fld16386 AS int) = 0    --  serial не списан
             AND CAST(serial._Marked AS int) = 0     -- не помеченНаУдаление
             AND tech._Description IN ('Отливка', 'Отливная тяга резина', 'Отливная тяга пластик', 'Фиброгипс')
-            AND categories._Description NOT IN ('Модель', 'Шаблоны', 'Сырье и материалы для производства', 'Под изгиб')   -- toolGroup
-            AND specs._Description NOT LIKE '%ФИ'
-            AND CAST(specs._Fld16175 AS int) = 0    -- ФормаПодИзгиб    
+            AND categories._Description NOT IN ('Модель', 'Шаблоны', 'Сырье и материалы для производства')   -- toolGroup
+            --AND specs._Description NOT LIKE '%ФИ'
+            --AND CAST(specs._Fld16175 AS int) = 0    -- ФормаПодИзгиб    
     '''
 
     mold_serials = pd.read_sql(query_specs, engine_unf)
