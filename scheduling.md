@@ -59,6 +59,14 @@ volumes:
 From `code` folder run  
 `docker build -t sashakang/scheduler .`
 
+
+## Update May 6th, 2024
+
+For some reason docker cannot be built locally anymore. 
+Could not figure out how to fix this.
+
+The workaround is to commit to github, pull to Ubuntu and build there.
+
 # Run container
 
 Locally  
@@ -78,7 +86,7 @@ This may work better with `docker restart scheduler` cron command.
 # Volume location
 
 On Windows:  
-`\\wsl$\docker-desktop-data\version-pack-data\community\docker\volumes\scheduling-vol\_data\`
+`\\wsl$\docker-desktop-data\data\docker\volumes\`
 
 
 # Attach terminal to a running container
