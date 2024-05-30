@@ -106,7 +106,7 @@ def read_order(order_no):
         WHERE
     --        tech._Description IN ('Отливка', 'Протяжка', 'Отливная тяга резина', 'Отливная тяга пластик', 'Фиброгипс')   -- Технология
             price_types._Description = 'Исполнитель'
-            AND items.[_Description] NOT LIKE '%Паллада%'            
+--            AND items.[_Description] NOT LIKE '%Паллада%'            
     )
     , rates AS (
         SELECT 
